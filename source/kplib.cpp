@@ -1,4 +1,4 @@
-/**************************************************************************************************
+﻿/**************************************************************************************************
 KPLIB.C: Ken's Picture LIBrary written by Ken Silverman
 Copyright (c) 1998-2008 Ken Silverman
 Ken Silverman's official web site: http://advsys.net/ken

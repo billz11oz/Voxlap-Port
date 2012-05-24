@@ -17,7 +17,7 @@
 #include "../include/porthacks.h"
 
 /**
- * The dpoint3d structure is defined in VOXLAP5.H as "double x, y, z".
+ * The point3d_double structure is defined in VOXLAP5.H as "double x, y, z".
  * 	ipos           : specifies (x,y,z) position
  * 	istr,ihei,ifor : specifies orientation, where:
  * 		istr is the RIGHT unit vector ("strafe" direction)
@@ -26,7 +26,7 @@
  * 	I like to put the letter "i" in front of these variables because "i"
  * 	is pronounced like "eye". Cute, huh?
  */
-dpoint3d ipos, istr, ihei, ifor;
+point3d_double ipos, istr, ihei, ifor;
 
 
 /**
@@ -43,9 +43,9 @@ vx5sprite desklamp;
  * differently (such as "main" vs. "WinMain"), I put the program entry
  * point in WINMAIN/DOSMAIN. The first thing they do is call initapp().
  *
- * @param The parameters are formatted exactly like ANSI C's "main" function.
+ * @param argc The parameters are formatted exactly like ANSI C's "main" function.
  
- * @param The parameters are formatted exactly like ANSI C's "main" function.
+ * @param **argv The parameters are formatted exactly like ANSI C's "main" function.
  */
 long initapp (long argc, char **argv)
 {
@@ -77,10 +77,10 @@ long initapp (long argc, char **argv)
 	 * handles the map structure in its own memory. You are responsible for
 	 * dealing with the starting position and orientation. Loadvxl parameters:
 	 * char *mapfilename : voxel map filename
-	 * @param dpoint3d * : pointer to starting position
-	 * @param dpoint3d * : pointer to starting RIGHT unit vector
-	 * @param dpoint3d * : pointer to starting DOWN unit vector
-	 * @param dpoint3d * : pointer to starting FORWARD unit vector
+	 * @param &ipos point3d_double * : pointer to starting position
+	 * @param &istr point3d_double * : pointer to starting RIGHT unit vector
+	 * @param &ihei point3d_double * : pointer to starting DOWN unit vector
+	 * @param &ifor point3d_double * : pointer to starting FORWARD unit vector
 	 */
 	loadvxl("vxl/untitled.vxl",&ipos,&istr,&ihei,&ifor);
 	

@@ -1,4 +1,4 @@
-# sub-directory macros
+﻿# sub-directory macros
 # locSRC                      =$(MAKEDIR)/source
 # locINC                      =$(MAKEDIR)/include
 # locLIB                      =$(MAKEDIR)/libraries

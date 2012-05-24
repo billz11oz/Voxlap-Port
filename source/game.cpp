@@ -1,4 +1,4 @@
-// VOXLAP engine by Ken Silverman (http://advsys.net/ken)
+﻿// VOXLAP engine by Ken Silverman (http://advsys.net/ken)
 // This file has been modified from Ken Silverman's original release
 
 #include <math.h>
@@ -54,11 +54,11 @@ long sxleng = 0;
 
 	//Player position variables:
 #define CLIPRAD 5
-dpoint3d ipos, istr, ihei, ifor, ivel;
+point3d_double ipos, istr, ihei, ifor, ivel;
 
 	//Debris variables:
 #define MAXDBRI 2048
-typedef struct { point3d p, v; long tim, col; } dbritype;
+typedef struct { point3d_float p, v; long tim, col; } dbritype;
 dbritype dbri[MAXDBRI];
 long dbrihead = 0, dbritail = 0;
 
@@ -78,18 +78,18 @@ long messagetimeout = 0, typemode = 0, quitmessagetimeout = 0x80000000;
 #ifdef __cplusplus
 struct spritetype : vx5sprite //Note: C++!
 {
-	point3d v, r;  //other attributes (not used by voxlap engine)
+	point3d_float v, r;  //other attributes (not used by voxlap engine)
 	long owner, tim, tag;
 };
 #else
 typedef struct
 {
-	point3d p; long flags;
-	static union { point3d s, x; }; static union { kv6data *voxnum; kfatype *kfaptr; };
-	static union { point3d h, y; }; long kfatim;
-	static union { point3d f, z; }; long okfatim;
+	point3d_float p; long flags;
+	static union { point3d_float s, x; }; static union { kv6data *voxnum; kfatype *kfaptr; };
+	static union { point3d_float h, y; }; long kfatim;
+	static union { point3d_float f, z; }; long okfatim;
 //----------------------------------------------------
-	point3d v, r;  //other attributes (not used by voxlap engine)
+	point3d_float v, r;  //other attributes (not used by voxlap engine)
 	long owner, tim, tag;
 } spritetype;
 #endif
@@ -131,7 +131,7 @@ char unitfalldelay[255] =
 	4,5,4,5,4,4,5,4,5,4,4,5,4,5,4,4,5,4,4,5,4,4,4,5,4,4,4,5,4,4,4,4,
 	5,4,4,4,4,4,4,4,5,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
 };
-point3d lastbulpos, lastbulvel; //hack to remember last bullet exploded
+point3d_float lastbulpos, lastbulvel; //hack to remember last bullet exploded
 
 long rubble[] =
 {
@@ -175,7 +175,7 @@ long aimgrav (float dx, float dy, float dz, float *xi, float *yi, float *zi, flo
 	di = sqrt(vv-zii)/dd; (*xi) = di*dx; (*yi) = di*dy; return(0);
 }
 
-void vecrand (float sc, point3d *a)
+void vecrand (float sc, point3d_float *a)
 {
 	float f;
 
@@ -185,7 +185,7 @@ void vecrand (float sc, point3d *a)
 	f = sqrt(1.0 - a->z*a->z)*sc; a->x *= f; a->y *= f; a->z *= sc;
 }
 
-void matrand (float sc, point3d *a, point3d *b, point3d *c)
+void matrand (float sc, point3d_float *a, point3d_float *b, point3d_float *c)
 {
 	float f;
 
@@ -318,7 +318,7 @@ long isspheresolid (long x, long y, long z, long r)
 
 long groucol[9] = {0x506050,0x605848,0x705040,0x804838,0x704030,0x603828,
 	0x503020,0x402818,0x302010,};
-long mycolfunc (lpoint3d *p)
+long mycolfunc (point3d_long *p)
 {
 	long i, j;
 	j = groucol[(p->z>>5)+1]; i = groucol[p->z>>5];
@@ -332,7 +332,7 @@ long mycolfunc (lpoint3d *p)
 	//Heightmap for bottom
 unsigned char bothei[32*32], botheimin;
 long botcol[32*32];
-long botcolfunc (lpoint3d *p) { return(botcol[(p->y&(32-1))*32+(p->x&(32-1))]); }
+long botcolfunc (point3d_long *p) { return(botcol[(p->y&(32-1))*32+(p->x&(32-1))]); }
 void botinit ()
 {
 	float f, g;
@@ -367,38 +367,6 @@ void botinit ()
 		}
 }
 
-static inline void fcossin (float a, float *c, float *s)
-{
-	#if defined(__NOASM__)
-	*c = cos(a);
-	*s = sin(a);
-	#endif
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	DWORD PTR a\n\t"
-		"fsincos\n\t"
-		"mov	eax, c\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		"mov	eax, s\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld	a
-		fsincos
-		mov	eax, c
-		fstp	dword ptr [eax]
-		mov	eax, s
-		fstp	dword ptr [eax]
-	}
-	#endif
-}
-
 #define EXTRASLICECOVER 1
 
 void drawspritebendx (vx5sprite *spr, float bendang, long stepsiz)
@@ -415,7 +383,7 @@ void drawspritebendx (vx5sprite *spr, float bendang, long stepsiz)
 	{
 		vx5.xplanemin = i; vx5.xplanemax = i+stepsiz+EXTRASLICECOVER;
 		f = (float)i + g;
-		fcossin(f*bendang,&c,&s);
+		COSSIN(f*bendang,c,s);
 		tempspr.s.x = spr->s.x*c - spr->h.x*s;
 		tempspr.s.y = spr->s.y*c - spr->h.y*s;
 		tempspr.s.z = spr->s.z*c - spr->h.z*s;
@@ -444,7 +412,7 @@ void drawspritebendy (vx5sprite *spr, float bendang, long stepsiz)
 	{
 		vx5.xplanemin = i; vx5.xplanemax = i+stepsiz+EXTRASLICECOVER;
 		f = (float)i + g;
-		fcossin(f*bendang,&c,&s);
+		COSSIN(f*bendang,c,s);
 		tempspr.s.x = spr->s.x*c - spr->f.x*s;
 		tempspr.s.y = spr->s.y*c - spr->f.y*s;
 		tempspr.s.z = spr->s.z*c - spr->f.z*s;
@@ -472,7 +440,7 @@ void drawspritetwist (vx5sprite *spr, float twistang, long stepsiz)
 	for(i=0;i<tempspr.voxnum->xsiz;i+=stepsiz)
 	{
 		vx5.xplanemin = i; vx5.xplanemax = i+stepsiz+EXTRASLICECOVER;
-		fcossin(((float)i + g)*twistang,&c,&s);
+		COSSIN(((float)i + g)*twistang,c,s);
 		tempspr.h.x = spr->h.x*c - spr->f.x*s;
 		tempspr.h.y = spr->h.y*c - spr->f.y*s;
 		tempspr.h.z = spr->h.z*c - spr->f.z*s;
@@ -488,7 +456,7 @@ void drawspritetwist (vx5sprite *spr, float twistang, long stepsiz)
 long initmap ()
 {
 	kv6data *tempkv6;
-	lpoint3d lp;
+	point3d_long lp;
 	float f, g;
 	long i, j, k;
 	char tempnam[MAX_PATH], *vxlnam, *skynam, *kv6nam, *userst;
@@ -733,9 +701,9 @@ void uninitapp ()
 
 	//liquid==0 means it bounces
 	//liquid!=0 means no bounce and freezes into floor (useful for blood)
-void spawndebris (point3d *p, float vel, long col, long num, long liquid)
+void spawndebris (point3d_float *p, float vel, long col, long num, long liquid)
 {
-	point3d fp;
+	point3d_float fp;
 
 	for(;num>=0;num--)
 	{
@@ -763,8 +731,8 @@ void movedebris ()
 {
 	long i, j;
 	float f;
-	point3d ofp, fp;
-	lpoint3d lp;
+	point3d_float ofp, fp;
+	point3d_long lp;
 
 	for(i=dbritail;i!=dbrihead;i=((i+1)&(MAXDBRI-1)))
 	{
@@ -827,7 +795,7 @@ void movedebris ()
 
 void explodesprite (vx5sprite *spr, float vel, long liquid, long stepsize)
 {
-	point3d fp, fp2, fp3, fp4;
+	point3d_float fp, fp2, fp3, fp4;
 	kv6voxtype *v, *ve;
 	kv6data *kv;
 	long i, x, y, z;
@@ -878,19 +846,19 @@ void explodesprite (vx5sprite *spr, float vel, long liquid, long stepsize)
 void deletesprite (long index)
 {
 	numsprites--;
-	playsoundupdate(&spr[index].p,(point3d *)0);
+	playsoundupdate(&spr[index].p,(point3d_float *)0);
 	playsoundupdate(&spr[numsprites].p,&spr[index].p);
 	spr[index] = spr[numsprites];
 }
 
-static point3d dummysnd[256];
+static point3d_float dummysnd[256];
 static long dummysndhead = 0, dummysndtail = 0;
 
 void doframe ()
 {
-	dpoint3d dp, dp2, dp3, dpos;
-	point3d fp, fp2, fp3, fpos;
-	lpoint3d lp, lp2;
+	point3d_double dp, dp2, dp3, dpos;
+	point3d_float fp, fp2, fp3, fpos;
+	point3d_long lp, lp2;
 	double d;
 	float f, fmousx, fmousy;
 	long i, j, k, l, m, *hind, hdir;
@@ -1017,7 +985,7 @@ void doframe ()
 		{
 			if ((tempbuf[i] >= '0') && (tempbuf[i] <= '9')) k = tempbuf[i]-'0'; else k = 10;
 			drawtile(numb[k].f,numb[k].p,numb[k].x,numb[k].y,0,numb[k].y<<16,
-				((i*24-j*12)<<l)+(xres<<15),(yres-6)<<16,1<<l,1<<l,0,(min(max(100-myhealth,0),100)*0x010202)^-1);
+				((i*24-j*12)<<l)+(xres<<15),(yres-6)<<16,1<<l,1<<l,0,(MIN(MAX(100-myhealth,0),100)*0x010202)^-1);
 		}
 	}
 
@@ -1059,7 +1027,7 @@ void doframe ()
 		j = strlen(message); l = 0; lp.x = xres/FONTXDIM; lp.y = 0;
 		while (l < j)
 		{
-			lp.z = min(l+lp.x,j);
+			lp.z = MIN(l+lp.x,j);
 			if (!l) m = ((-l)*FONTXDIM-(((lp.z-l)*FONTXDIM)>>1));
 				else m = ((-l)*FONTXDIM-((lp.x*FONTXDIM)>>1));
 			for(i=l;i<lp.z;i++)
@@ -1081,7 +1049,7 @@ void doframe ()
 		lp.x = xres/FONTXDIM; lp.y = yres-32-6-((j-1)/lp.x)*(FONTYDIM+2);
 		for(l=0;l<j;l+=lp.x)
 		{
-			lp.z = min(l+lp.x,j);
+			lp.z = MIN(l+lp.x,j);
 			if (!l) m = ((-l)*FONTXDIM-(((lp.z-l)*FONTXDIM)>>1));
 				else m = ((-l)*FONTXDIM-((lp.x*FONTXDIM)>>1));
 			for(i=l;i<lp.z;i++)
@@ -1117,8 +1085,8 @@ void doframe ()
 	fp.x = ipos.x; fp.y = ipos.y; fp.z = ipos.z;
 	for(i=dummysndtail;i!=dummysndhead;i=((i+1)%(sizeof(dummysnd)/sizeof(dummysnd[0]))))
 	{
-		if (!cansee(&dummysnd[i],&fp,&lp)) playsoundupdate(&dummysnd[i],(point3d *)-2);
-												else playsoundupdate(&dummysnd[i],(point3d *)-3);
+		if (!cansee(&dummysnd[i],&fp,&lp)) playsoundupdate(&dummysnd[i],(point3d_float *)-2);
+												else playsoundupdate(&dummysnd[i],(point3d_float *)-3);
 	}
 
 	if (keystatus[0x3c]) //F2 (stop least recently started looping sound)
@@ -1126,7 +1094,7 @@ void doframe ()
 		keystatus[0x3c] = 0;
 		if (dummysndhead != dummysndtail)
 		{
-			playsoundupdate(&dummysnd[dummysndtail],(point3d *)-1);
+			playsoundupdate(&dummysnd[dummysndtail],(point3d_float *)-1);
 			dummysndtail = ((dummysndtail+1)%(sizeof(dummysnd)/sizeof(dummysnd[0])));
 		}
 	}
@@ -1172,7 +1140,7 @@ void doframe ()
 	if (showfps)
 	{
 			//Fast sort when already sorted... otherwise slow!
-		j = min(numframes,FPSSIZ)-1;
+		j = MIN(numframes,FPSSIZ)-1;
 		for(k=0;k<j;k++)
 			if (fpsometer[fpsind[k]] > fpsometer[fpsind[k+1]])
 			{
@@ -1187,7 +1155,7 @@ void doframe ()
 		i = ((fpsometer[fpsind[j>>1]]+fpsometer[fpsind[(j+1)>>1]])>>1); //Median
 
 		drawline2d(0,i>>4,FPSSIZ,i>>4,0xe06060);
-		for(k=0;k<FPSSIZ;k++) drawpoint2d(k,min(fpsometer[(numframes+k)&(FPSSIZ-1)]>>4,yres-1),0xc0c0c0);
+		for(k=0;k<FPSSIZ;k++) drawpoint2d(k,MIN(fpsometer[(numframes+k)&(FPSSIZ-1)]>>4,yres-1),0xc0c0c0);
 		print4x6(0,0,0xc0c0c0,-1,"%d.%02dms %.2ffps",i/100,i%100,100000.0/(float)i);
 	}
 
@@ -1382,7 +1350,7 @@ skipalldraw:;
 						}
 						if (!memcasecmp(&typemessage[1],"lightmode=",10))
 						{
-							 vx5.lightmode = min(max(atoi(&typemessage[11]),0),2);
+							 vx5.lightmode = MIN(MAX(atoi(&typemessage[11]),0),2);
 							 updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
 							 typemessage[0] = 0;
 						}
@@ -1637,7 +1605,7 @@ skipalldraw:;
 			spr[i].v.z += fsynctics*64;
 
 				//Do rotation
-			f = min(totclk-spr[i].tim,250)*fsynctics*.01;
+			f = MIN(totclk-spr[i].tim,250)*fsynctics*.01;
 			axisrotate(&spr[i].s,&spr[i].r,f);
 			axisrotate(&spr[i].h,&spr[i].r,f);
 			axisrotate(&spr[i].f,&spr[i].r,f);
@@ -1727,7 +1695,7 @@ skipalldraw:;
 				{
 					spr[i].owner = 100; spr[i].flags &= ~4; //Make sprite visible again
 					findrandomspot(&lp.x,&lp.y,&lp.z);
-					playsoundupdate(&spr[i].p,(point3d *)0);
+					playsoundupdate(&spr[i].p,(point3d_float *)0);
 					spr[i].p.x = lp.x; spr[i].p.y = lp.y; spr[i].p.z = lp.z-((float)spr[i].voxnum->zsiz-spr[i].voxnum->zpiv)*.5;
 					continue;
 				}
@@ -2056,7 +2024,7 @@ skipalldraw:;
 									  else playsound(BLOWUP,100,1.0,&spr[i].p,KSND_3D);
 
 							spr[i].tag = -17; spr[i].tim = totclk; spr[i].owner = 0;
-							f = min(256.0/(float)j,1.0);
+							f = MIN(256.0/(float)j,1.0);
 							spr[i].v.x *= f; spr[i].v.y *= f; spr[i].v.z *= f;
 							vecrand(1.0,&spr[i].r);
 							//spr[i].r.x = ((float)rand()/16383.5f)-1.f;
@@ -2123,7 +2091,7 @@ skipalldraw:;
 		{
 			f = ((float)spr[i].tag*PI/180.0);
 			if (spr[i].owner) f /= (float)spr[i].owner;
-			j = min((long)(fsynctics*1000.0),spr[i].tim);
+			j = MIN((long)(fsynctics*1000.0),spr[i].tim);
 			orthorotate(j*f,0,0,&spr[i].s,&spr[i].h,&spr[i].f);
 			spr[i].tim -= j;
 			continue;
@@ -2206,7 +2174,7 @@ skipalldraw:;
 	if (keystatus[0x4a]) //KP-
 	{
 		keystatus[0x4a] = 0;
-		volpercent = max(volpercent-10,0);
+		volpercent = MAX(volpercent-10,0);
 		sprintf(message,"Volume: %d%%",volpercent);
 		quitmessagetimeout = messagetimeout = totclk+4000;
 		setvolume(volpercent);
@@ -2214,7 +2182,7 @@ skipalldraw:;
 	if (keystatus[0x4e]) //KP-
 	{
 		keystatus[0x4e] = 0;
-		volpercent = min(volpercent+10,100);
+		volpercent = MIN(volpercent+10,100);
 		sprintf(message,"Volume: %d%%",volpercent);
 		quitmessagetimeout = messagetimeout = totclk+4000;
 		setvolume(volpercent);

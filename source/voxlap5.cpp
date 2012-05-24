@@ -1,4 +1,4 @@
-/**************************************************************************************************
+﻿/**************************************************************************************************
  * VOXLAP engine                                                                                  *
  * by Ken Silverman (http://advsys.net/ken)                                                       *
  **************************************************************************************************/
@@ -125,9 +125,9 @@ typedef struct { float x, y; } point2d;
 static long xres, yres, bytesperline, frameplace, xres4;
 long ylookup[MAXYDIM+1];
 
-static lpoint3d glipos;
-static point3d gipos, gistr, gihei, gifor;
-static point3d gixs, giys, gizs, giadd;
+static point3d_long glipos;
+static point3d_float gipos, gistr, gihei, gifor;
+static point3d_float gixs, giys, gizs, giadd;
 static float gihx, gihy, gihz, gposxfrac[2], gposyfrac[2], grd;
 static long gposz, giforzsgn, gstartz0, gstartz1, gixyi[2];
 static char *gstartv;
@@ -159,9 +159,9 @@ static long xbsceil[32], xbsflor[32];
 typedef struct { long v, b; } vlstyp;
 vlstyp vlst[VLSTSIZ];
 long hhead[1<<LOGHASHEAD], vlstcnt = 0x7fffffff;
-lpoint3d fstk[FSTKSIZ]; //Note .z is actually used as a pointer, not z!
+point3d_long fstk[FSTKSIZ]; //Note .z is actually used as a pointer, not z!
 #define FLCHKSIZ 4096
-lpoint3d flchk[FLCHKSIZ]; long flchkcnt = 0;
+point3d_long flchk[FLCHKSIZ]; long flchkcnt = 0;
 
 	//Opticast global variables:
 	//radar: 320x200 requires  419560*2 bytes (area * 6.56*2)
@@ -176,13 +176,13 @@ static castdat *angstart[MAXXDIM*4], *gscanptr;
 #define CMPRECIPSIZ MAXXDIM+32
 static float cmprecip[CMPRECIPSIZ], wx0, wy0, wx1, wy1;
 static long iwx0, iwy0, iwx1, iwy1;
-static point3d gcorn[4];
-		 point3d ginor[4]; //Should be static, but... necessary for stupid pingball hack :/
-static long lastx[max(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
+static point3d_float gcorn[4];
+		 point3d_float ginor[4]; //Should be static, but... necessary for stupid pingball hack :/
+static long lastx[MAX(MAXYDIM,VSID)], uurendmem[MAXXDIM*2+8], *uurend;
 
-void mat0(point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *);
-void mat1(point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *);
-void mat2(point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *, point3d *);
+void mat0(point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *);
+void mat1(point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *);
+void mat2(point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *, point3d_float *);
 
 	//Parallaxing sky variables:
 static long skypic = 0, nskypic = 0, skybpl, skyysiz, skycurlng, skycurdir;
@@ -222,6 +222,12 @@ long zbufoff;
 	#define __NOASM__ //no nspecial assembly used.
 #endif
 
+//------------ Debug setup ------------
+
+//#define NDEBUG
+#include <assert.h>
+
+
 //====================== Done with macro and variable heavy code, actual logic "begins"! ======================
 
 	//Ken Silverman knows how to use EMMS
@@ -229,173 +235,9 @@ long zbufoff;
 	#pragma warning(disable:4799) 
 #endif
 
-static inline void fcossin (float a, float *c, float *s)
-{
-	#ifdef __NOASM__
-	*c = cos(a);
-	*s = sin(a);
-	#else
-	#if __GNUC__ //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	DWORD PTR a\n\t"
-		"fsincos\n\t"
-		"mov	eax, c\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		"mov	eax, s\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if _MSC_VER //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld a
-		fsincos
-		mov	eax, c
-		fstp	dword ptr [eax]
-		mov	eax, s
-		fstp	dword ptr [eax]
-	}
-	#endif
-	#endif
-}
-
-static inline void dcossin (double a, double *c, double *s)
-{
-	#ifdef __NOASM__
-	*c = cos(a);
-	*s = sin(a);
-	#else
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	qword ptr a\n"
-		"fsincos\n"
-		"mov	eax, c\n"
-		"fstp	qword ptr [eax]\n"
-		"mov	eax, s\n"
-		"fstp	qword ptr [eax]\n"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld	a
-		fsincos
-		mov	eax, c
-		fstp	qword ptr [eax]
-		mov	eax, s
-		fstp	qword ptr [eax]
-	}
-	#endif
-	#endif
-}
-
 static inline void ftol (float f, long *a)
 {
-	#ifdef __NOASM__
-	
-	#else
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"mov	eax, a\n"
-		"fld	dword ptr f\n"
-		"fistp	dword ptr [eax]\n"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		mov	eax, a
-		fld	f
-		fistp	dword ptr [eax]
-	}
-	#endif
-	#endif
-}
-
-static inline void dtol (double d, long *a)
-{
-	#ifdef __NOASM__
-	
-	#else
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"mov	eax, a\n"
-		"fld	qword ptr d\n"
-		"fistp	dword ptr [eax]\n"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		mov	eax, a
-		fld	qword ptr d
-		fistp	dword ptr [eax]
-	}
-	#endif
-	#endif
-}
-
-
-static inline double dbound (double d, double dmin, double dmax)
-{
-	#ifdef __NOASM__
-	if (d < dmin)
-	{
-		d = dmin;
-	}
-	else
-	{
-		if (d > dmax)
-			d = dmax;
-	}
-	#else
-	//WARNING: This ASM code requires >= PPRO
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	qword ptr dmin\n"
-		"fld	qword ptr d\n"
-		"fucomi	st, st(1)\n"      //if (d < dmin)
-		"fcmovb	st, st(1)\n"      //    d = dmin;
-		"fld	qword ptr dmax\n"
-		"fxch	st(1)\n"
-		"fucomi	st, st(1)\n"      //if (d > dmax)
-		"fcmovnb	st, st(1)\n"  //    d = dmax;
-		"fstp	qword ptr d\n"
-		"fucompp\n"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld	dmin
-		fld	d
-		fucomi	st, st(1)   //if (d < dmin)
-		fcmovb	st, st(1)   //    d = dmin;
-		fld	dmax
-		fxch	st(1)
-		fucomi	st, st(1)   //if (d > dmax)
-		fcmovnb	st, st(1)   //    d = dmax;
-		fstp	d
-		fucompp
-	}
-	#endif
-	#endif
-	return(d);
+	*a = (long) f;
 }
 
 static inline long mulshr16 (long a, long d)
@@ -560,31 +402,6 @@ static inline long umulshr32 (long a, long d)
 	#endif
 }
 
-static inline long scale (long a, long d, long c)
-{
-	#ifdef __NOASM__
-	
-	#else
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"mov	eax, a\n"
-		"imul	dword ptr d\n"
-		"idiv	dword ptr c\n"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		mov	eax, a
-		imul	d
-		idiv	c
-	}
-	#endif
-	#endif
-}
 
 static inline long dmulrethigh (long b, long c, long a, long d)
 {
@@ -699,14 +516,6 @@ static inline long lbound0 (long a, long b) //b MUST be >= 0
 {
 	if ((unsigned long)a <= b) return(a);
 	return((~(a>>31))&b);
-}
-
-	//if (a < b) return(b); else if (a > c) return(c); else return(a);
-static inline long lbound (long a, long b, long c) //c MUST be >= b
-{
-	c -= b;
-	if ((unsigned long)(a-b) <= c) return(a);
-	return((((b-a)>>31)&c) + b);
 }
 
 #define LSINSIZ 8 //Must be >= 2!
@@ -922,9 +731,9 @@ long lightvox (long i)
 	long r, g, b;
 
 	b = ((unsigned long)i>>24);
-	r = min((((i>>16)&255)*b)>>7,255);
-	g = min((((i>>8 )&255)*b)>>7,255);
-	b = min((((i    )&255)*b)>>7,255);
+	r = MIN((((i>>16)&255)*b)>>7,255);
+	g = MIN((((i>>8 )&255)*b)>>7,255);
+	b = MIN((((i    )&255)*b)>>7,255);
 	return((r<<16)+(g<<8)+b);
 }
 
@@ -957,16 +766,16 @@ long colormul (long i, long mulup8)
 	return((i&0xff000000)+(r<<16)+(g<<8)+b);
 }
 
-long curcolfunc (lpoint3d *p) { return(vx5.curcol); }
+long curcolfunc (point3d_long *p) { return(vx5.curcol); }
 
-long floorcolfunc (lpoint3d *p)
+long floorcolfunc (point3d_long *p)
 {
 	char *v;
 	for(v=sptr[p->y*VSID+p->x];(p->z>v[2]) && (v[0]);v+=v[0]*4);
 	return(*(long *)&v[4]);
 }
 
-long jitcolfunc (lpoint3d *p) { return(colorjit(vx5.curcol,vx5.amount)); }
+long jitcolfunc (point3d_long *p) { return(colorjit(vx5.curcol,vx5.amount)); }
 
 static long manycolukup[64] =
 {
@@ -975,12 +784,12 @@ static long manycolukup[64] =
 	255,254,253,250,245,240,234,226,218,208,198,188,176,165,152,140,
 	128,115,103, 90, 79, 67, 57, 47, 37, 29, 21, 15, 10,  5,  2,  1
 };
-long manycolfunc (lpoint3d *p)
+long manycolfunc (point3d_long *p)
 {
 	return((manycolukup[p->x&63]<<16)+(manycolukup[p->y&63]<<8)+manycolukup[p->z&63]+0x80000000);
 }
 
-long sphcolfunc (lpoint3d *p)
+long sphcolfunc (point3d_long *p)
 {
 	long i;
 	ftol(sin((p->x+p->y+p->z-vx5.cen)*vx5.daf)*-96,&i);
@@ -991,22 +800,27 @@ long sphcolfunc (lpoint3d *p)
 #define WOODYSIZ 24
 #define WOODZSIZ 24
 static float wx[256], wy[256], wz[256], vx[256], vy[256], vz[256];
-long woodcolfunc (lpoint3d *p)
+long woodcolfunc (point3d_long *p)
 {
-	float col, u, a, f, dx, dy, dz;
+	float col, u, f, dx, dy, dz;
 	long i, c, xof, yof, tx, ty, xoff;
 
 	if (*(long *)&wx[0] == 0)
 	{
 		for(i=0;i<256;i++)
 		{
+			float a;
 			wx[i] = WOODXSIZ * ((float)rand()/32768.0f-.5f) * .5f;
 			wy[i] = WOODXSIZ * ((float)rand()/32768.0f-.5f) * .5f;
 			wz[i] = WOODXSIZ * ((float)rand()/32768.0f-.5f) * .5f;
 
 				//UNIFORM spherical randomization (see spherand.c)
 			dz = 1.0f-(float)rand()/32768.0f*.04f;
-			a = (float)rand()/32768.0f*PI*2.0f; fcossin(a,&dx,&dy);
+			
+			a = (float)rand()/32768.0f*PI*2.0f; //old_COSSIN
+			dx = sin(a);
+			dy = cos(a);
+			
 			f = sqrt(1.0f-dz*dz); dx *= f; dy *= f;
 				//??z: rings,  ?z?: vertical,  z??: horizontal (nice)
 			vx[i] = dz; vy[i] = fabs(dy); vz[i] = dx;
@@ -1049,7 +863,7 @@ long woodcolfunc (lpoint3d *p)
 }
 
 long gxsizcache = 0, gysizcache = 0;
-long pngcolfunc (lpoint3d *p)
+long pngcolfunc (point3d_long *p)
 {
 	long x, y, z, u, v;
 	float fx, fy, fz, rx, ry, rz;
@@ -1090,7 +904,7 @@ long pngcolfunc (lpoint3d *p)
 
 	//Special case for SETSEC & SETCEI bumpmapping (vx5.picmode == 3)
 	//no safety checks, returns alpha as signed char in range: (-128 to 127)
-long hpngcolfunc (point3d *p)
+long hpngcolfunc (point3d_float *p)
 {
 	long u, v;
 	float fx, fy, fz;
@@ -1269,7 +1083,7 @@ long getcube (long x, long y, long z)
 long compilestack (long *uind, long *n0, long *n1, long *n2, long *n3, char *cbuf, long px, long py)
 {
 	long oz, onext, n, cp2, cp1, cp0, rp1, rp0;
-	lpoint3d p;
+	point3d_long p;
 
 	p.x = px; p.y = py;
 
@@ -1532,7 +1346,7 @@ void gline (long leng, float x0, float y0, float x1, float y1)
 		{
 			if (dmulrethigh(-gposz,c->cx1,c->cy1,gxmax) >= 0)
 			{
-				j = scale(-gposz,c->cx1,c->cy1)+PREC; //+PREC for good luck
+				j = (-gposz * (c->cx1)/(c->cy1) ) + PREC; //+PREC for good luck
 				if ((unsigned long)j < (unsigned long)gxmax) gxmax = j;
 			}
 		} else gxmax = 0;
@@ -1820,10 +1634,12 @@ void setflash (float px, float py, float pz, long flashradius, long numang, long
 
 	for(i=0;i<numang;i++)
 	{
+		float angle = ((float)i+(float)angoff*.125f)*PI*2.0f/(float)numang;
 		clearMMX();
-
-		fcossin(((float)i+(float)angoff*.125f)*PI*2.0f/(float)numang,&vx,&vy);
-
+		
+		vx = cos(angle); //old_COSSIN
+		vy = sin(angle);
+		
 		ftol(FPREC/fabs(vx),&gdz[0]);
 		ftol(FPREC/fabs(vy),&gdz[1]);
 
@@ -1977,9 +1793,9 @@ static long bitsnum[32] =
 static float fsqrecip[5860]; //75*75 + 15*15 + 3*3 = 5859 is max value (5*5*5 box)
 #endif
 
-void estnorm (long x, long y, long z, point3d *fp)
+void estnorm (long x, long y, long z, point3d_float *fp)
 {
-	lpoint3d n;
+	point3d_long n;
 	long *lptr, xx, yy, zz, b[5], i, j, k;
 	float f;
 
@@ -2110,7 +1926,7 @@ static long docube (long x, long y, long z)
 
 void setnormflash (float px, float py, float pz, long flashradius, long intens)
 {
-	point3d fp;
+	point3d_float fp;
 	float f, fintens;
 	long i, j, k, l, m, x, y, z, xx, yy, xi, yi, xe, ye, ipx, ipy, ipz;
 	long ceilnum, sq;
@@ -2259,7 +2075,7 @@ normflash_exwhile2:;
 				{
 					xx = ipx+x; yy = ipy+y;
 					if ((unsigned long)(xx|yy) >= VSID) goto normflash_exwhile3;
-					k = max(labs(x),labs(y));
+					k = MAX(labs(x),labs(y));
 
 					v = sptr[yy*VSID+xx]; sq = x*x+y*y;
 					while (1)
@@ -2298,7 +2114,7 @@ normflash_exwhile3:;
 				{
 					xx = ipx+x; yy = ipy+y;
 					if ((unsigned long)(xx|yy) >= VSID) goto normflash_exwhile4;
-					k = max(labs(x),labs(y)); m = ((x+xi != xe) && (y+yi != ye));
+					k = MAX(labs(x),labs(y)); m = ((x+xi != xe) && (y+yi != ye));
 
 					v = sptr[yy*VSID+xx]; i = 0; sq = x*x+y*y;
 					while (1)
@@ -2344,7 +2160,7 @@ void hline (float x0, float y0, float x1, float y1, long *ix0, long *ix1)
 	else if (y1 > wy1) ftol((wy1-y0)/dyx+x0,ix1);
 	else ftol(x1,ix1);
 	if ((*ix0) < iwx0) (*ix0) = iwx0;
-	if ((*ix0) > iwx1) (*ix0) = iwx1; //(*ix1) = min(max(*ix1,wx0),wx1);
+	if ((*ix0) > iwx1) (*ix0) = iwx1; //(*ix1) = MIN(MAX(*ix1,wx0),wx1);
 	gline(labs((*ix1)-(*ix0)),(float)(*ix0),((*ix0)-x1)*dyx + y1,
 									  (float)(*ix1),((*ix1)-x1)*dyx + y1);
 }
@@ -2372,13 +2188,11 @@ static float optistrx, optistry, optiheix, optiheiy, optiaddx, optiaddy;
 static int64_t foglut[2048], fogcol;
 static long ofogdist = -1;
 
-#ifndef _DOS
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 extern void *opti4asm;
-#define opti4 ((point4d *)&opti4asm)
+#define opti4 ((point4d_float *)&opti4asm)
 #ifdef __cplusplus
 }
 #endif
@@ -2488,7 +2302,7 @@ void vrendzfog (long sx, long sy, long p1, long iplc, long iinc)
 
 #endif
 
-void setcamera (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo,
+void setcamera (point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo,
 					 float dahx, float dahy, float dahz)
 {
 	long i, j;
@@ -2545,11 +2359,11 @@ void opticast ()
 	for(j=u=0;j<gmipnum;j++,u+=i)
 		for(i=0;i<(256>>j)+4;i++)
 			gylookup[i+u] = ((((gposz>>j)-i*PREC)>>(16-j))&0x0000ffff);
-	gxmip = max(vx5.mipscandist,4)*PREC;
+	gxmip = MAX(vx5.mipscandist,4)*PREC;
 #else
 	for(i=0;i<256+4;i++) gylookup[i] = (i*PREC-gposz);
 #endif
-	gmaxscandist = min(max(vx5.maxscandist,1),2047)*PREC;
+	gmaxscandist = MIN(MAX(vx5.maxscandist,1),2047)*PREC;
 
 // Selecting functions
 #if (USEZBUFFER != 1)
@@ -2586,7 +2400,7 @@ void opticast ()
 	gstartz1 = gstartv[1];
 
 	if (gifor.z == 0) f = 32000; else f = gihz/gifor.z;
-	f = min(max(f,-32000),32000);
+	f = MIN(MAX(f,-32000),32000);
 	cx = gistr.z*f + gihx;
 	cy = gihei.z*f + gihy;
 
@@ -2812,8 +2626,8 @@ double findmaxcr (double px, double py, double pz, double cr)
 	x = (long)px; y = (long)py; z = (long)pz; i0 = i1 = 0; ix = x; y0 = y1 = y;
 	while (1)
 	{
-		f = max(fabs((double)x+.5-px)-.5,0);
-		g = max(fabs((double)y+.5-py)-.5,0);
+		f = MAX(fabs((double)x+.5-px)-.5,0);
+		g = MAX(fabs((double)y+.5-py)-.5,0);
 		f = f*f + g*g;
 		if (f < maxcr)
 		{
@@ -2838,7 +2652,7 @@ double findmaxcr (double px, double py, double pz, double cr)
 				maxcr = f;
 			else
 			{
-				g = min(pz-(double)z0,(double)z1-pz);
+				g = MIN(pz-(double)z0,(double)z1-pz);
 				f += g*g; if (f < maxcr) maxcr = f;
 			}
 		}
@@ -2889,8 +2703,8 @@ long sphtraceo (double px, double py, double pz,    //start pt
 	(*ny) = py + vy;
 	(*nz) = pz + vz;
 
-	z0 = max((long)(min(pz,*nz)-cr)-2,-1);
-	z1 = min((long)(max(pz,*nz)+cr)+2,MAXZDIM);
+	z0 = MAX((long)(MIN(pz,*nz)-cr)-2,-1);
+	z1 = MIN((long)(MAX(pz,*nz)+cr)+2,MAXZDIM);
 
 	thresh2 = cr+1.7321+1; thresh2 *= thresh2;
 
@@ -3141,8 +2955,16 @@ long sphtrace (double x0, double y0, double z0,          //start pt
 	if (dxy != 0) rxy = 1.0 / dxy; else rxy = 0;
 	grdst = rxy; gendt = 1; cr2 = cr*cr; t = cr + 0.7072; gcrf2 = t*t;
 
-	if (((long *)&vz)[1] >= 0) { dtol(   z0-cr-.5,&cz0); dtol(vz+z0+cr-.5,&cz1); }
-								 else { dtol(vz+z0-cr-.5,&cz0); dtol(   z0+cr-.5,&cz1); }
+	if (((long *)&vz)[1] >= 0)
+	{
+	cz0 = (long) (z0-cr-.5);
+	cz1 = (long) (vz+z0+cr-.5);
+	}
+	else
+	{
+	cz0 = (long) (vz+z0-cr-.5);
+	cz1 = (long) (z0+cr-.5);
+	}
 
 		//Precalculate stuff for closest point on cube finder
 	dax = 0; day = 0; vyx = 0; vxy = 0; rvz = 0; vxz = 0; vyz = 0;
@@ -3159,7 +2981,8 @@ long sphtrace (double x0, double y0, double z0,          //start pt
 	dyz = vy*vy+dxyz; if (dyz != 0) ryz = 1.0 / dyz;
 	dxyz += dxy; rxyz = 1.0 / dxyz;
 
-	dtol(x0-.5,&x); dtol(y0-.5,&y);
+	x = (long) (x0 - 0.5);
+	y = (long) (y0 - 0.5);
 	ix = x; iy0 = iy1 = y;
 	i0 = 0; clipit[0].x = x; clipit[0].y = y; i1 = 1;
 	do
@@ -3172,8 +2995,8 @@ long sphtrace (double x0, double y0, double z0,          //start pt
 			//closest point on cube finder
 			//Plane intersection (both vertical planes)
 #if 0
-		intx = dbound((dy-day)*vxy + x0,dx,dx1);
-		inty = dbound((dx-dax)*vyx + y0,dy,dy1);
+		intx = BOUND((dy-day)*vxy + x0,dx,dx1);
+		inty = BOUND((dx-dax)*vyx + y0,dy,dy1);
 #else
 		intx = (dy-day)*vxy + x0;
 		inty = (dx-dax)*vyx + y0;
@@ -3199,7 +3022,7 @@ long sphtrace (double x0, double y0, double z0,          //start pt
 		if (((long *)&t)[1] < 0) intz = z0; else intz = vz*t + z0;
 
 			//Find closest ceil(iz[0]) & flor(iz[1]) in (x,y) column
-		dtol(intz-.5,&i);
+		i = (long) (intz-.5);
 		if ((unsigned long)(x|y) < VSID)
 		{
 			v = sptr[y*VSID+x]; iz[0] = MAXZDIM-2048; iz[1] = v[1];
@@ -3304,18 +3127,18 @@ sphtracecont:;
 		if ((y >= iy1) && (y < VSID-1) && (gdist2square(dx+ .5,dy+1.5))) { clipit[i1].x = x; clipit[i1].y = y+1; i1 = ((i1+1)&(MAXCLIPIT-1)); iy1 = y+1; }
 	} while (i0 != i1);
 #if 1
-	(*hitx) = dbound(vx*gendt + x0,acr,VSID-acr);
-	(*hity) = dbound(vy*gendt + y0,acr,VSID-acr);
-	(*hitz) = dbound(vz*gendt + z0,MAXZDIM-2048+acr,MAXZDIM-1-acr);
+	(*hitx) = BOUND(vx*gendt + x0,acr,VSID-acr);
+	(*hity) = BOUND(vy*gendt + y0,acr,VSID-acr);
+	(*hitz) = BOUND(vz*gendt + z0,MAXZDIM-2048+acr,MAXZDIM-1-acr);
 #else
-	(*hitx) = min(max(vx*gendt + x0,acr),VSID-acr);
-	(*hity) = min(max(vy*gendt + y0,acr),VSID-acr);
-	(*hitz) = min(max(vz*gendt + z0,MAXZDIM-2048+acr),MAXZDIM-1-acr);
+	(*hitx) = MIN(MAX(vx*gendt + x0,acr),VSID-acr);
+	(*hity) = MIN(MAX(vy*gendt + y0,acr),VSID-acr);
+	(*hitz) = MIN(MAX(vz*gendt + z0,MAXZDIM-2048+acr),MAXZDIM-1-acr);
 #endif
 	return(gendt == 1);
 }
 
-void clipmove (dpoint3d *p, dpoint3d *v, double acr)
+void clipmove (point3d_double *p, point3d_double *v, double acr)
 {
 	double f, gx, gy, gz, nx, ny, nz, ex, ey, ez, hitx, hity, hitz, cr;
 	//double nx2, ny2, nz2, ex2, ey2, ez2; //double ox, oy, oz;
@@ -3381,10 +3204,10 @@ void clipmove (dpoint3d *p, dpoint3d *v, double acr)
 	//   { p->x = ox; p->y = oy; p->z = oz; }
 }
 
-long cansee (point3d *p0, point3d *p1, lpoint3d *hit)
+long cansee (point3d_float *p0, point3d_float *p1, point3d_long *hit)
 {
-	lpoint3d a, c, d, p, i;
-	point3d f, g;
+	point3d_long a, c, d, p, i;
+	point3d_float f, g;
 	long cnt;
 
 	ftol(p0->x-.5,&a.x); ftol(p0->y-.5,&a.y); ftol(p0->z-.5,&a.z);
@@ -3424,7 +3247,7 @@ long cansee (point3d *p0, point3d *p1, lpoint3d *hit)
 	//  h: coordinate of voxel hit (if any)
 	//ind: pointer to surface voxel's 32-bit color (0 if none hit)
 	//dir: 0-5: last direction moved upon hit (-1 if inside solid)
-void hitscan (dpoint3d *p, dpoint3d *d, lpoint3d *h, long **ind, long *dir)
+void hitscan (point3d_double *p, point3d_double *d, point3d_long *h, long **ind, long *dir)
 {
 	long ixi, iyi, izi, dx, dy, dz, dxi, dyi, dzi, z0, z1, minz;
 	float f, kx, ky, kz;
@@ -3439,26 +3262,26 @@ void hitscan (dpoint3d *p, dpoint3d *d, lpoint3d *h, long **ind, long *dir)
 	iyi = (((((signed long *)&d->y)[1])>>31)|1);
 	izi = (((((signed long *)&d->z)[1])>>31)|1);
 
-	minz = min(h->z,0);
+	minz = MIN(h->z,0);
 
 	f = 0x3fffffff/VSID; //Maximum delta value
 	if ((fabs(d->x) >= fabs(d->y)) && (fabs(d->x) >= fabs(d->z)))
 	{
 		kx = 1024.0;
-		if (d->y == 0) ky = f; else ky = min(fabs(d->x/d->y)*1024.0,f);
-		if (d->z == 0) kz = f; else kz = min(fabs(d->x/d->z)*1024.0,f);
+		if (d->y == 0) ky = f; else ky = MIN(fabs(d->x/d->y)*1024.0,f);
+		if (d->z == 0) kz = f; else kz = MIN(fabs(d->x/d->z)*1024.0,f);
 	}
 	else if (fabs(d->y) >= fabs(d->z))
 	{
 		ky = 1024.0;
-		if (d->x == 0) kx = f; else kx = min(fabs(d->y/d->x)*1024.0,f);
-		if (d->z == 0) kz = f; else kz = min(fabs(d->y/d->z)*1024.0,f);
+		if (d->x == 0) kx = f; else kx = MIN(fabs(d->y/d->x)*1024.0,f);
+		if (d->z == 0) kz = f; else kz = MIN(fabs(d->y/d->z)*1024.0,f);
 	}
 	else
 	{
 		kz = 1024.0;
-		if (d->x == 0) kx = f; else kx = min(fabs(d->z/d->x)*1024.0,f);
-		if (d->y == 0) ky = f; else ky = min(fabs(d->z/d->y)*1024.0,f);
+		if (d->x == 0) kx = f; else kx = MIN(fabs(d->z/d->x)*1024.0,f);
+		if (d->y == 0) ky = f; else ky = MIN(fabs(d->z/d->y)*1024.0,f);
 	}
 	ftol(kx,&dxi); ftol((p->x-(float)h->x)*kx,&dx); if (ixi >= 0) dx = dxi-dx;
 	ftol(ky,&dyi); ftol((p->y-(float)h->y)*ky,&dy); if (iyi >= 0) dy = dyi-dy;
@@ -3531,12 +3354,12 @@ void hitscan (dpoint3d *p, dpoint3d *d, lpoint3d *h, long **ind, long *dir)
 	//ind: pointer to voxel hit (kv6voxtype) (0 if none hit)
 	//vsc:  input: max multiple/fraction of v0's length to scan (1.0 for |v0|)
 	//     output: multiple/fraction of v0's length of hit point
-void sprhitscan (dpoint3d *p0, dpoint3d *v0, vx5sprite *spr, lpoint3d *h, kv6voxtype **ind, float *vsc)
+void sprhitscan (point3d_double *p0, point3d_double *v0, vx5sprite *spr, point3d_long *h, kv6voxtype **ind, float *vsc)
 {
 	kv6voxtype *vx[4];
 	kv6data *kv;
-	point3d t, u, v;
-	lpoint3d a, d, p, q;
+	point3d_float t, u, v;
+	point3d_long a, d, p, q;
 	float f, g;
 	long i, x, y, xup, ix0, ix1;
 
@@ -3567,8 +3390,8 @@ void sprhitscan (dpoint3d *p0, dpoint3d *v0, vx5sprite *spr, lpoint3d *h, kv6vox
 	u.z /= (spr->f.x*spr->f.x + spr->f.y*spr->f.y + spr->f.z*spr->f.z);
 	u.x += kv->xpiv; u.y += kv->ypiv; u.z += kv->zpiv;
 
-	ix0 = max(vx5.xplanemin,0);
-	ix1 = min(vx5.xplanemax,kv->xsiz);
+	ix0 = MAX(vx5.xplanemin,0);
+	ix1 = MIN(vx5.xplanemax,kv->xsiz);
 
 		//Increment ray until it hits bounding box
 		// (ix0,0,0,ix1-1ulp,kv->ysiz-1ulp,kv->zsiz-1ulp)
@@ -3687,9 +3510,9 @@ unsigned long calcglobalmass ()
 	return(j);
 }
 
-void loadnul (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+void loadnul (point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
-	lpoint3d lp0, lp1;
+	point3d_long lp0, lp1;
 	long i, x, y;
 	char *v;
 	float f;
@@ -3742,7 +3565,7 @@ void loadnul (dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
 	updatebbox(0,0,0,VSID,VSID,MAXZDIM,0);
 }
 
-long loaddta (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+long loaddta (const char *filename, point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
 	long i, j, p, leng, minz = 255, maxz = 0, h[5], longpal[256];
 	char dat, *dtahei, *dtacol, *v, dafilename[MAX_PATH];
@@ -3799,7 +3622,7 @@ long loaddta (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe,
 	kzclose();
 
 		//Fill board data
-	minz = lbound(128-((minz+maxz)>>1),-minz,255-maxz);
+	minz = BOUND(128-((minz+maxz)>>1),-minz,255-maxz);
 	for(p=0;p<1024*1024;p++)
 	{
 		h[0] = (long)dtahei[p];
@@ -3839,7 +3662,7 @@ long loaddta (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe,
 	return(1);
 }
 
-long loadpng (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+long loadpng (const char *filename, point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
 	unsigned long *pngdat, dat[5];
 	long i, j, k, l, p, leng, minz = 255, maxz = 0;
@@ -3871,7 +3694,7 @@ long loadpng (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe,
 	}
 
 		//Fill board data
-	minz = lbound(128-((minz+maxz)>>1),-minz,255-maxz);
+	minz = BOUND(128-((minz+maxz)>>1),-minz,255-maxz);
 	for(p=0;p<VSID*VSID;p++)
 	{
 		dat[0] = pngdat[p];
@@ -3930,7 +3753,7 @@ long loadpng (const char *filename, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe,
 
 //Quake3 .BSP loading code begins --------------------------------------------
 typedef struct { long c, i; float z, z1; } vlinerectyp;
-static point3d q3pln[5250];
+static point3d_float q3pln[5250];
 static float q3pld[5250], q3vz[256];
 static long q3nod[4850][3], q3lf[4850];
 long vlinebsp (float x, float y, float z0, float z1, float *dvz)
@@ -3976,10 +3799,10 @@ void delslab(long *b2, long y0, long y1);
 long *scum2(long x, long y);
 void scum2finish();
 
-void loadbsp (const char *filnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+void loadbsp (const char *filnam, point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
 	FILE *fp;
-	dpoint3d dp;
+	point3d_double dp;
 	float f, xof, yof, zof, sc, rsc;
 	long numplanes, numnodes, numleafs, fpos[17], flng[17];
 	long i, x, y, z, z0, z1, vcnt, *lptr, minx, miny, minz, maxx, maxy, maxz;
@@ -4080,7 +3903,7 @@ void loadbsp (const char *filnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, d
 
 //Quake3 .BSP loading code ends ----------------------------------------------
 
-long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+long loadvxl (const char *lodfilnam, point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
 	FILE *fil;
 	long i, j, fsiz;
@@ -4125,7 +3948,7 @@ long loadvxl (const char *lodfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe
 	return(1);
 }
 
-long savevxl (const char *savfilnam, dpoint3d *ipo, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+long savevxl (const char *savfilnam, point3d_double *ipo, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
 	FILE *fil;
 	long i;
@@ -4189,7 +4012,11 @@ loadbluesky:;
 	if (!(skylng = (point2d *)malloc(skyysiz*8))) return(-1);
 	f = PI*2.0 / ((float)skyysiz);
 	for(y=skyysiz-1;y>=0;y--)
-		fcossin((float)y*f+PI,&skylng[y].x,&skylng[y].y);
+		{
+		float angle = (float)y*f+PI;
+		skylng[y].x = cos(angle); //old_COSSIN
+		skylng[y].y = sin(angle);
+		}
 	skylngmul = (float)skyysiz/(PI*2);
 		//This makes those while loops in gline() not lockup when skyysiz==1
 	if (skyysiz == 1) { skylng[0].x = 0; skylng[0].y = 0; }
@@ -4211,7 +4038,7 @@ loadbluesky:;
 	return(0);
 }
 
-void orthonormalize (point3d *v0, point3d *v1, point3d *v2)
+void orthonormalize (point3d_float *v0, point3d_float *v1, point3d_float *v2)
 {
 	float t;
 
@@ -4226,7 +4053,7 @@ void orthonormalize (point3d *v0, point3d *v1, point3d *v2)
 	(v2->z) = (v0->x)*(v1->y) - (v0->y)*(v1->x);
 }
 
-void dorthonormalize (dpoint3d *v0, dpoint3d *v1, dpoint3d *v2)
+void dorthonormalize (point3d_double *v0, point3d_double *v1, point3d_double *v2)
 {
 	double t;
 
@@ -4241,13 +4068,17 @@ void dorthonormalize (dpoint3d *v0, dpoint3d *v1, dpoint3d *v2)
 	(v2->z) = (v0->x)*(v1->y) - (v0->y)*(v1->x);
 }
 
-void orthorotate (float ox, float oy, float oz, point3d *ist, point3d *ihe, point3d *ifo)
+void orthorotate (float ox, float oy, float oz, point3d_float *ist, point3d_float *ihe, point3d_float *ifo)
 {
 	float f, t, dx, dy, dz, rr[9];
 
-	fcossin(ox,&ox,&dx);
-	fcossin(oy,&oy,&dy);
-	fcossin(oz,&oz,&dz);
+	dx = sin(ox); //old_COSSIN
+	ox = cos(ox);
+	dy = sin(oy); //old_COSSIN
+	oy = cos(oy);
+	dz = sin(oz); //old_COSSIN
+	oz = cos(oz);
+	
 	f = ox*oz; t = dx*dz; rr[0] =  t*dy + f; rr[7] = -f*dy - t;
 	f = ox*dz; t = dx*oz; rr[1] = -f*dy + t; rr[6] =  t*dy - f;
 	rr[2] = dz*oy; rr[3] = -dx*oy; rr[4] = ox*oy; rr[8] = oz*oy; rr[5] = dy;
@@ -4266,13 +4097,17 @@ void orthorotate (float ox, float oy, float oz, point3d *ist, point3d *ihe, poin
 	//orthonormalize(ist,ihe,ifo);
 }
 
-void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe, dpoint3d *ifo)
+void dorthorotate (double ox, double oy, double oz, point3d_double *ist, point3d_double *ihe, point3d_double *ifo)
 {
 	double f, t, dx, dy, dz, rr[9];
 
-	dcossin(ox,&ox,&dx);
-	dcossin(oy,&oy,&dy);
-	dcossin(oz,&oz,&dz);
+	dx = sin(ox); //old_COSSIN
+	ox = cos(ox);
+	dy = sin(oy); //old_COSSIN
+	oy = cos(oy);
+	dz = sin(oz); //old_COSSIN
+	oz = cos(oz);
+	
 	f = ox*oz; t = dx*dz; rr[0] =  t*dy + f; rr[7] = -f*dy - t;
 	f = ox*dz; t = dx*oz; rr[1] = -f*dy + t; rr[6] =  t*dy - f;
 	rr[2] = dz*oy; rr[3] = -dx*oy; rr[4] = ox*oy; rr[8] = oz*oy; rr[5] = dy;
@@ -4291,12 +4126,14 @@ void dorthorotate (double ox, double oy, double oz, dpoint3d *ist, dpoint3d *ihe
 	//dorthonormalize(ist,ihe,ifo);
 }
 
-void axisrotate (point3d *p, point3d *axis, float w)
+void axisrotate (point3d_float *p, point3d_float *axis, float w)
 {
-	point3d ax;
+	point3d_float ax;
 	float t, c, s, ox, oy, oz, k[9];
 
-	fcossin(w,&c,&s);
+	c = cos(w); //old_COSSIN
+	s = sin(w);
+	
 	t = axis->x*axis->x + axis->y*axis->y + axis->z*axis->z; if (t == 0) return;
 	t = 1.0 / sqrt(t); ax.x = axis->x*t; ax.y = axis->y*t; ax.z = axis->z*t;
 
@@ -4314,12 +4151,12 @@ void axisrotate (point3d *p, point3d *axis, float w)
 	p->z = ox*k[6] + oy*k[7] + oz*k[8];
 }
 
-void slerp (point3d *istr, point3d *ihei, point3d *ifor,
-				point3d *istr2, point3d *ihei2, point3d *ifor2,
-				point3d *ist, point3d *ihe, point3d *ifo, float rat)
+void slerp (point3d_float *istr, point3d_float *ihei, point3d_float *ifor,
+				point3d_float *istr2, point3d_float *ihei2, point3d_float *ifor2,
+				point3d_float *ist, point3d_float *ihe, point3d_float *ifo, float rat)
 {
-	point3d ax;
-	float c, s, t, ox, oy, oz, k[9];
+	point3d_float ax;
+	float angle, c, s, t, ox, oy, oz, k[9];
 
 	ist->x = istr->x; ist->y = istr->y; ist->z = istr->z;
 	ihe->x = ihei->x; ihe->y = ihei->y; ihe->z = ihei->z;
@@ -4341,7 +4178,10 @@ void slerp (point3d *istr, point3d *ihei, point3d *ifor,
 	c = (c*t - s) / (t-s);
 	if (c < -1) c = -1;
 	if (c > 1) c = 1;
-	fcossin(acos(c)*rat,&c,&s);
+	
+	angle = acos(c)*rat; //old_COSSIN
+	c = cos(angle);
+	s = sin(angle);
 
 	t = 1.0 / sqrt(t); ax.x *= t; ax.y *= t; ax.z *= t;
 
@@ -4395,7 +4235,7 @@ void expandrle (long x, long y, long *uind)
 long compilerle (long *n0, long *n1, long *n2, long *n3, long *n4, char *cbuf, long px, long py)
 {
 	long i, ia, ze, zend, onext, dacnt, n, *ic;
-	lpoint3d p;
+	point3d_long p;
 	char *v;
 
 	p.x = px; p.y = py;
@@ -4529,8 +4369,8 @@ void scumline ()
 	long i, j, k, x, y, x0, x1, *mptr, *uptr;
 	char *v;
 
-	x0 = min(scox0-1,min(scx0,scoox0)); scoox0 = scox0; scox0 = scx0;
-	x1 = max(scox1+1,max(scx1,scoox1)); scoox1 = scox1; scox1 = scx1;
+	x0 = MIN(scox0-1,MIN(scx0,scoox0)); scoox0 = scox0; scox0 = scx0;
+	x1 = MAX(scox1+1,MAX(scx1,scoox1)); scoox1 = scox1; scox1 = scx1;
 
 	uptr = &scoym3[SCPITCH]; if (uptr == &radar[SCPITCH*9]) uptr = &radar[SCPITCH*6];
 	mptr = &uptr[SCPITCH];   if (mptr == &radar[SCPITCH*9]) mptr = &radar[SCPITCH*6];
@@ -4559,8 +4399,8 @@ void scumline ()
 		for(x=x0-1;x<scex0;x++) expandstack(x,scoy-1,&mptr[x*SCPITCH*3]);
 		for(x=x1+1;x>scex1;x--) expandstack(x,scoy-1,&mptr[x*SCPITCH*3]);
 	}
-	sceox0 = min(x0-1,scex0);
-	sceox1 = max(x1+1,scex1);
+	sceox0 = MIN(x0-1,scex0);
+	sceox1 = MAX(x1+1,scex1);
 
 	if ((x1 < scx0) || (x0 > scx1))
 	{
@@ -4673,8 +4513,8 @@ void scum2line ()
 	long i, j, k, x, y, x0, x1, *mptr, *uptr;
 	char *v;
 
-	x0 = min(scox0-1,min(scx0,scoox0)); scoox0 = scox0; scox0 = scx0;
-	x1 = max(scox1+1,max(scx1,scoox1)); scoox1 = scox1; scox1 = scx1;
+	x0 = MIN(scox0-1,MIN(scx0,scoox0)); scoox0 = scox0; scox0 = scx0;
+	x1 = MAX(scox1+1,MAX(scx1,scoox1)); scoox1 = scox1; scox1 = scx1;
 
 	uptr = &scoym3[SCPITCH]; if (uptr == &radar[SCPITCH*9]) uptr = &radar[SCPITCH*6];
 	mptr = &uptr[SCPITCH];   if (mptr == &radar[SCPITCH*9]) mptr = &radar[SCPITCH*6];
@@ -4703,8 +4543,8 @@ void scum2line ()
 		for(x=x0-1;x<scex0;x++) expandrle(x,scoy-1,&mptr[x*SCPITCH*3]);
 		for(x=x1+1;x>scex1;x--) expandrle(x,scoy-1,&mptr[x*SCPITCH*3]);
 	}
-	sceox0 = min(x0-1,scex0);
-	sceox1 = max(x1+1,scex1);
+	sceox0 = MIN(x0-1,scex0);
+	sceox1 = MAX(x1+1,scex1);
 
 	if ((x1 < scx0) || (x0 > scx1))
 	{
@@ -4857,8 +4697,8 @@ void voxbackup (long x0, long y0, long x1, long y1, long tag)
 
 	voxdontrestore();
 
-	x0 = max(x0-2,0); y0 = max(y0-2,0);
-	x1 = min(x1+2,VSID); y1 = min(y1+2,VSID);
+	x0 = MAX(x0-2,0); y0 = MAX(y0-2,0);
+	x1 = MIN(x1+2,VSID); y1 = MIN(y1+2,VSID);
 	if ((x1-x0)*(y1-y0) > 262144) return;
 
 	bacx0 = x0; bacy0 = y0; bacx1 = x1; bacy1 = y1; backtag = tag;
@@ -4908,7 +4748,7 @@ void voxbackup (long x0, long y0, long x1, long y1, long tag)
 	//   -2: use vx5.colfunc
 void setcube (long px, long py, long pz, long col)
 {
-	long bakcol, (*bakcolfunc)(lpoint3d *), *lptr;
+	long bakcol, (*bakcolfunc)(point3d_long *), *lptr;
 
 	vx5.minx = px; vx5.maxx = px+1;
 	vx5.miny = py; vx5.maxy = py+1;
@@ -5020,7 +4860,7 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 				{
 					oz = z;
 
-						//z,besti = min,argmin(curz[0],curz[1],curz[2],curz[3])
+						//z,besti = min,argMIN(curz[0],curz[1],curz[2],curz[3])
 					besti = (((unsigned long)(curz[1]-curz[    0]))>>31);
 						 i = (((unsigned long)(curz[3]-curz[    2]))>>31)+2;
 					besti +=(((( signed long)(curz[i]-curz[besti]))>>31)&(i-besti));
@@ -5235,7 +5075,7 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 #if 0 //TEMP HACK!!!
 	{
 	FILE *fil;
-	dpoint3d dp;
+	point3d_double dp;
 	if (!(fil = fopen("temp512.vxl","wb"))) return;
 	i = 0x09072000; fwrite(&i,4,1,fil);  //Version
 	i = (VSID>>1); fwrite(&i,4,1,fil);
@@ -5254,15 +5094,15 @@ void genmipvxl (long x0, long y0, long x1, long y1)
 
 }
 
-void setsphere (lpoint3d *hit, long hitrad, long dacol)
+void setsphere (point3d_long *hit, long hitrad, long dacol)
 {
 	void (*modslab)(long *, long, long);
 	long i, x, y, xs, ys, zs, xe, ye, ze, sq;
 	float f, ff;
 
-	xs = max(hit->x-hitrad,0); xe = min(hit->x+hitrad,VSID-1);
-	ys = max(hit->y-hitrad,0); ye = min(hit->y+hitrad,VSID-1);
-	zs = max(hit->z-hitrad,0); ze = min(hit->z+hitrad,MAXZDIM-1);
+	xs = MAX(hit->x-hitrad,0); xe = MIN(hit->x+hitrad,VSID-1);
+	ys = MAX(hit->y-hitrad,0); ye = MIN(hit->y+hitrad,VSID-1);
+	zs = MAX(hit->z-hitrad,0); ze = MIN(hit->z+hitrad,MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -5301,25 +5141,25 @@ void setsphere (lpoint3d *hit, long hitrad, long dacol)
 			f = ff-tempfloatbuf[labs(x-hit->x)]; if (*(long *)&f <= 0) continue;
 			while (*(long *)&tempfloatbuf[sq] <  *(long *)&f) sq++;
 			while (*(long *)&tempfloatbuf[sq] >= *(long *)&f) sq--;
-			modslab(scum2(x,y),max(hit->z-sq,zs),min(hit->z+sq+1,ze));
+			modslab(scum2(x,y),MAX(hit->z-sq,zs),MIN(hit->z+sq+1,ze));
 		}
 	}
 	scum2finish();
 	updatebbox(vx5.minx,vx5.miny,vx5.minz,vx5.maxx,vx5.maxy,vx5.maxz,dacol);
 }
 
-void setellipsoid (lpoint3d *hit, lpoint3d *hit2, long hitrad, long dacol, long bakit)
+void setellipsoid (point3d_long *hit, point3d_long *hit2, long hitrad, long dacol, long bakit)
 {
 	void (*modslab)(long *, long, long);
 	long x, y, xs, ys, zs, xe, ye, ze;
 	float a, b, c, d, e, f, g, h, r, t, u, Za, Zb, fx0, fy0, fz0, fx1, fy1, fz1;
 
-	xs = min(hit->x,hit2->x)-hitrad; xs = max(xs,0);
-	ys = min(hit->y,hit2->y)-hitrad; ys = max(ys,0);
-	zs = min(hit->z,hit2->z)-hitrad; zs = max(zs,0);
-	xe = max(hit->x,hit2->x)+hitrad; xe = min(xe,VSID-1);
-	ye = max(hit->y,hit2->y)+hitrad; ye = min(ye,VSID-1);
-	ze = max(hit->z,hit2->z)+hitrad; ze = min(ze,MAXZDIM-1);
+	xs = MIN(hit->x,hit2->x)-hitrad; xs = MAX(xs,0);
+	ys = MIN(hit->y,hit2->y)-hitrad; ys = MAX(ys,0);
+	zs = MIN(hit->z,hit2->z)-hitrad; zs = MAX(zs,0);
+	xe = MAX(hit->x,hit2->x)+hitrad; xe = MIN(xe,VSID-1);
+	ye = MAX(hit->y,hit2->y)+hitrad; ye = MIN(ye,VSID-1);
+	ze = MAX(hit->z,hit2->z)+hitrad; ze = MIN(ze,MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -5360,7 +5200,7 @@ void setellipsoid (lpoint3d *hit, lpoint3d *hit2, long hitrad, long dacol, long 
 
 	//Draws a cylinder, given: 2 points, a radius, and a color
 	//Code mostly optimized - original code from CYLINDER.BAS:drawcylinder
-void setcylinder (lpoint3d *p0, lpoint3d *p1, long cr, long dacol, long bakit)
+void setcylinder (point3d_long *p0, point3d_long *p1, long cr, long dacol, long bakit)
 {
 	void (*modslab)(long *, long, long);
 
@@ -5402,9 +5242,9 @@ void setcylinder (lpoint3d *p0, lpoint3d *p1, long cr, long dacol, long bakit)
 
 	if (xxyy == 0)
 	{
-		iz0 = max(z0,0); iz1 = min(z1,MAXZDIM);
-		minx = max(x0-cr,0); maxx = min(x0+cr,VSID-1);
-		miny = max(y0-cr,0); maxy = min(y0+cr,VSID-1);
+		iz0 = MAX(z0,0); iz1 = MIN(z1,MAXZDIM);
+		minx = MAX(x0-cr,0); maxx = MIN(x0+cr,VSID-1);
+		miny = MAX(y0-cr,0); maxy = MIN(y0+cr,VSID-1);
 
 		vx5.minx = minx; vx5.maxx = maxx+1;
 		vx5.miny = miny; vx5.maxy = maxy+1;
@@ -5475,8 +5315,8 @@ void setcylinder (lpoint3d *p0, lpoint3d *p1, long cr, long dacol, long bakit)
 			{
 				Zb = vx0*az + vy0*bz; Zc = vx0*vx0 + vy0*vy0 - 1;
 				t = Zb*Zb - Za*Zc; if (*(long *)&t <= 0) continue; t = sqrt(t);
-				ftol(max((-Zb-t)*rZa,vz0    ),&iz0); if (iz0 < 0) iz0 = 0;
-				ftol(min((-Zb+t)*rZa,vz0+rcz),&iz1); if (iz1 > MAXZDIM) iz1 = MAXZDIM;
+				ftol(MAX((-Zb-t)*rZa,vz0    ),&iz0); if (iz0 < 0) iz0 = 0;
+				ftol(MIN((-Zb+t)*rZa,vz0+rcz),&iz1); if (iz1 > MAXZDIM) iz1 = MAXZDIM;
 				modslab(scum2(ix,iy),iz0,iz1);
 			}
 		}
@@ -5498,14 +5338,14 @@ void setcylinder (lpoint3d *p0, lpoint3d *p1, long cr, long dacol, long bakit)
 }
 
 	//Draws a rectangle, given: 2 points as opposite corners, and a color
-void setrect (lpoint3d *hit, lpoint3d *hit2, long dacol)
+void setrect (point3d_long *hit, point3d_long *hit2, long dacol)
 {
 	long x, y, xs, ys, zs, xe, ye, ze;
 
-		//WARNING: do NOT use lbound because 'c' not guaranteed to be >= 'b'
-	xs = max(min(hit->x,hit2->x),0); xe = min(max(hit->x,hit2->x),VSID-1);
-	ys = max(min(hit->y,hit2->y),0); ye = min(max(hit->y,hit2->y),VSID-1);
-	zs = max(min(hit->z,hit2->z),0); ze = min(max(hit->z,hit2->z),MAXZDIM-1);
+		//WARNING: do NOT use BOUND because 'c' not guaranteed to be >= 'b'
+	xs = MAX(MIN(hit->x,hit2->x),0); xe = MIN(MAX(hit->x,hit2->x),VSID-1);
+	ys = MAX(MIN(hit->y,hit2->y),0); ye = MIN(MAX(hit->y,hit2->y),VSID-1);
+	zs = MAX(MIN(hit->z,hit2->z),0); ze = MIN(MAX(hit->z,hit2->z),MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -5531,7 +5371,7 @@ void setrect (lpoint3d *hit, lpoint3d *hit2, long dacol)
 }
 
 	//Does CSG using pre-sorted spanlist
-void setspans (vspans *lst, long lstnum, lpoint3d *offs, long dacol)
+void setspans (vspans *lst, long lstnum, point3d_long *offs, long dacol)
 {
 	void (*modslab)(long *, long, long);
 	long i, j, x, y, z0, z1, *lptr;
@@ -5607,10 +5447,10 @@ static long min0[VSID], max0[VSID]; //MAXY
 static long min1[VSID], max1[VSID]; //MAXX
 static long min2[VSID], max2[VSID]; //MAXY
 
-static void canseerange (point3d *p0, point3d *p1)
+static void canseerange (point3d_float *p0, point3d_float *p1)
 {
-	lpoint3d a, c, d, p, i;
-	point3d f, g;
+	point3d_long a, c, d, p, i;
+	point3d_float f, g;
 	long cnt, j;
 
 	ftol(p0->x-.5,&a.x); ftol(p0->y-.5,&a.y); ftol(p0->z-.5,&a.z);
@@ -5646,9 +5486,9 @@ static void canseerange (point3d *p0, point3d *p1)
 	}
 }
 
-void settri (point3d *p0, point3d *p1, point3d *p2, long bakit)
+void settri (point3d_float *p0, point3d_float *p1, point3d_float *p2, long bakit)
 {
-	point3d n;
+	point3d_float n;
 	float f, x0, y0, z0, x1, y1, z1, rx, ry, k0, k1;
 	long i, x, y, z, iz0, iz1, minx, maxx, miny, maxy;
 
@@ -5712,9 +5552,9 @@ void settri (point3d *p0, point3d *p1, point3d *p2, long bakit)
 	//2. Doesn't guarantee that hit point/line is purely air (but very close)
 	//3. Piescan is more useful for parts of rope code :/
 static long tripind[24] = {0,4,1,5,2,6,3,7,0,2,1,3,4,6,5,7,0,1,2,3,4,5,6,7};
-long triscan (point3d *p0, point3d *p1, point3d *p2, point3d *hit, lpoint3d *lhit)
+long triscan (point3d_float *p0, point3d_float *p1, point3d_float *p2, point3d_float *hit, point3d_long *lhit)
 {
-	point3d n, d[8], cp2;
+	point3d_float n, d[8], cp2;
 	float f, g, x0, x1, y0, y1, rx, ry, k0, k1, fx, fy, fz, pval[8];
 	long i, j, k, x, y, z, iz0, iz1, minx, maxx, miny, maxy, didhit;
 
@@ -5842,12 +5682,12 @@ long triscan (point3d *p0, point3d *p1, point3d *p2, point3d *hit, lpoint3d *lhi
 // ------------------------ CONVEX 3D HULL CODE BEGINS ------------------------
 
 #define MAXPOINTS (256 *2) //Leave the *2 here for safety!
-point3d nm[MAXPOINTS*2+2];
+point3d_float nm[MAXPOINTS*2+2];
 float nmc[MAXPOINTS*2+2];
 long tri[MAXPOINTS*8+8], lnk[MAXPOINTS*8+8], tricnt;
 char umost[VSID*VSID], dmost[VSID*VSID];
 
-void initetrasid (point3d *pt, long z)
+void initetrasid (point3d_float *pt, long z)
 {
 	long i, j, k;
 	float x0, y0, z0, x1, y1, z1;
@@ -5861,7 +5701,7 @@ void initetrasid (point3d *pt, long z)
 	nmc[z] = nm[z].x*pt[k].x + nm[z].y*pt[k].y + nm[z].z*pt[k].z;
 }
 
-void inithull3d (point3d *pt, long nump)
+void inithull3d (point3d_float *pt, long nump)
 {
 	float px, py, pz;
 	long i, k, s, z, szz, zz, zx, snzz, nzz, zzz, otricnt;
@@ -5961,9 +5801,9 @@ endit:;  lnk[tricnt-3] = otricnt+2; lnk[otricnt+2] = tricnt-3;
 }
 
 static long incmod3[3];
-void tmaphulltrisortho (point3d *pt)
+void tmaphulltrisortho (point3d_float *pt)
 {
-	point3d *i0, *i1;
+	point3d_float *i0, *i1;
 	float r, knmx, knmy, knmc, xinc;
 	long i, k, op, p, pe, y, yi, z, zi, sy, sy1, itop, ibot, damost;
 
@@ -6012,7 +5852,7 @@ void tmaphulltrisortho (point3d *pt)
 	}
 }
 
-void sethull3d (point3d *pt, long nump, long dacol, long bakit)
+void sethull3d (point3d_float *pt, long nump, long dacol, long bakit)
 {
 	void (*modslab)(long *, long, long);
 	float fminx, fminy, fminz, fmaxx, fmaxy, fmaxz;
@@ -6023,9 +5863,9 @@ void sethull3d (point3d *pt, long nump, long dacol, long bakit)
 	fminx = fminy = VSID; fminz = MAXZDIM; fmaxx = fmaxy = fmaxz = 0;
 	for(i=0;i<nump;i++)
 	{
-		pt[i].x = min(max(pt[i].x,0),VSID-1);
-		pt[i].y = min(max(pt[i].y,0),VSID-1);
-		pt[i].z = min(max(pt[i].z,0),MAXZDIM-1);
+		pt[i].x = MIN(MAX(pt[i].x,0),VSID-1);
+		pt[i].y = MIN(MAX(pt[i].y,0),VSID-1);
+		pt[i].z = MIN(MAX(pt[i].z,0),MAXZDIM-1);
 
 		if (pt[i].x < fminx) fminx = pt[i].x;
 		if (pt[i].y < fminy) fminy = pt[i].y;
@@ -6067,9 +5907,9 @@ void sethull3d (point3d *pt, long nump, long dacol, long bakit)
 // ------------------------- CONVEX 3D HULL CODE ENDS -------------------------
 
 	//Old&Slow sector code, but only this one supports the 3D bumpmapping :(
-static void setsectorb (point3d *p, long *point2, long n, float thick, long dacol, long bakit, long bumpmap)
+static void setsectorb (point3d_float *p, long *point2, long n, float thick, long dacol, long bakit, long bumpmap)
 {
-	point3d norm, p2;
+	point3d_float norm, p2;
 	float d, f, x0, y0, x1, y1;
 	long i, j, k, got, x, y, z, xs, ys, zs, xe, ye, ze, maxis, ndacol;
 
@@ -6103,9 +5943,9 @@ static void setsectorb (point3d *p, long *point2, long n, float thick, long daco
 		if (p[i].y > ye) ye = p[i].y;
 		if (p[i].z > ze) ze = p[i].z;
 	}
-	xs = max(xs-thick-bumpmap,0); xe = min(xe+thick+bumpmap,VSID-1);
-	ys = max(ys-thick-bumpmap,0); ye = min(ye+thick+bumpmap,VSID-1);
-	zs = max(zs-thick-bumpmap,0); ze = min(ze+thick+bumpmap,MAXZDIM-1);
+	xs = MAX(xs-thick-bumpmap,0); xe = MIN(xe+thick+bumpmap,VSID-1);
+	ys = MAX(ys-thick-bumpmap,0); ye = MIN(ye+thick+bumpmap,VSID-1);
+	zs = MAX(zs-thick-bumpmap,0); ze = MIN(ze+thick+bumpmap,MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -6300,7 +6140,7 @@ void ordfillpolygon (float *px, float *py, long *point2, long n, long day, long 
 		for(;sy<nsy;sy++)
 			for(i=0;i<numrst;i+=2)
 			{
-				modslab(scum2(sy,day),max(rst[i].p>>16,0),min(rst[i+1].p>>16,MAXZDIM));
+				modslab(scum2(sy,day),MAX(rst[i].p>>16,0),MIN(rst[i+1].p>>16,MAXZDIM));
 				rst[i].p += rst[i].i; rst[i+1].p += rst[i+1].i;
 			}
 	}
@@ -6310,10 +6150,10 @@ void ordfillpolygon (float *px, float *py, long *point2, long n, long day, long 
 	//given: p&point2: 3D points, n: # points, thick: thickness, dacol: color
 static float ppx[MAXCURS*4], ppy[MAXCURS*4];
 static long npoint2[MAXCURS*4];
-void setsector (point3d *p, long *point2, long n, float thick, long dacol, long bakit)
+void setsector (point3d_float *p, long *point2, long n, float thick, long dacol, long bakit)
 {
 	void (*modslab)(long *, long, long);
-	point3d norm;
+	point3d_float norm;
 	float f, rnormy, xth, zth, dax, daz, t, t1;
 	long i, j, k, x, y, z, sn, s2, nn, xs, ys, zs, xe, ye, ze;
 
@@ -6344,7 +6184,7 @@ void setsector (point3d *p, long *point2, long n, float thick, long dacol, long 
 		}
 		if ((j^k)&0xff000000) //If high bytes are !=, then use bumpmapping
 		{
-			setsectorb(p,point2,n,thick,dacol,bakit,max(labs(j>>24),labs(k>>24)));
+			setsectorb(p,point2,n,thick,dacol,bakit,MAX(labs(j>>24),labs(k>>24)));
 			return;
 		}
 	}
@@ -6361,9 +6201,9 @@ void setsector (point3d *p, long *point2, long n, float thick, long dacol, long 
 		if (p[i].y > ye) ye = p[i].y;
 		if (p[i].z > ze) ze = p[i].z;
 	}
-	xs = max(xs-thick,0); xe = min(xe+thick,VSID-1);
-	ys = max(ys-thick,0); ye = min(ye+thick,VSID-1);
-	zs = max(zs-thick,0); ze = min(ze+thick,MAXZDIM-1);
+	xs = MAX(xs-thick,0); xe = MIN(xe+thick,VSID-1);
+	ys = MAX(ys-thick,0); ye = MIN(ye+thick,VSID-1);
+	zs = MAX(zs-thick,0); ze = MIN(ze+thick,MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -6435,9 +6275,9 @@ void setsector (point3d *p, long *point2, long n, float thick, long dacol, long 
 	//Given: p[>=3]: points 0,1 are the axis of rotation, others make up shape
 	//      numcurs: number of points
 	//        dacol: color
-void setlathe (point3d *p, long numcurs, long dacol, long bakit)
+void setlathe (point3d_float *p, long numcurs, long dacol, long bakit)
 {
-	point3d norm, ax0, ax1, tp0, tp1;
+	point3d_float norm, ax0, ax1, tp0, tp1;
 	float d, f, x0, y0, x1, y1, px, py, pz;
 	long i, j, cnt, got, x, y, z, xs, ys, zs, xe, ye, ze, maxis, ndacol;
 
@@ -6473,9 +6313,9 @@ void setlathe (point3d *p, long numcurs, long dacol, long bakit)
 	tp0.x = ax0.x*y0 + p[0].x; tp1.x = ax0.x*y1 + p[0].x;
 	tp0.y = ax0.y*y0 + p[0].y; tp1.y = ax0.y*y1 + p[0].y;
 	tp0.z = ax0.z*y0 + p[0].z; tp1.z = ax0.z*y1 + p[0].z;
-	xs = max(min(tp0.x,tp1.x)-x0,0); xe = min(max(tp0.x,tp1.x)+x0,VSID-1);
-	ys = max(min(tp0.y,tp1.y)-x0,0); ye = min(max(tp0.y,tp1.y)+x0,VSID-1);
-	zs = max(min(tp0.z,tp1.z)-x0,0); ze = min(max(tp0.z,tp1.z)+x0,MAXZDIM-1);
+	xs = MAX(MIN(tp0.x,tp1.x)-x0,0); xe = MIN(MAX(tp0.x,tp1.x)+x0,VSID-1);
+	ys = MAX(MIN(tp0.y,tp1.y)-x0,0); ye = MIN(MAX(tp0.y,tp1.y)+x0,VSID-1);
+	zs = MAX(MIN(tp0.z,tp1.z)-x0,0); ze = MIN(MAX(tp0.z,tp1.z)+x0,MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -6550,7 +6390,7 @@ void setlathe (point3d *p, long numcurs, long dacol, long bakit)
 	//   vx5.currad: cutoff value
 	//      numcurs: number of points
 	//        dacol: color
-void setblobs (point3d *p, long numcurs, long dacol, long bakit)
+void setblobs (point3d_float *p, long numcurs, long dacol, long bakit)
 {
 	float dx, dy, dz, v, nrad;
 	long i, got, x, y, z, xs, ys, zs, xe, ye, ze, ndacol;
@@ -6558,9 +6398,9 @@ void setblobs (point3d *p, long numcurs, long dacol, long bakit)
 	if (numcurs <= 0) return;
 
 		//Boundaries are quick hacks - rewrite this code!!!
-	xs = max(p[0].x-64,0); xe = min(p[0].x+64,VSID-1);
-	ys = max(p[0].y-64,0); ye = min(p[0].y+64,VSID-1);
-	zs = max(p[0].z-64,0); ze = min(p[0].z+64,MAXZDIM-1);
+	xs = MAX(p[0].x-64,0); xe = MIN(p[0].x+64,VSID-1);
+	ys = MAX(p[0].y-64,0); ye = MIN(p[0].y+64,VSID-1);
+	zs = MAX(p[0].z-64,0); ze = MIN(p[0].z+64,MAXZDIM-1);
 	vx5.minx = xs; vx5.maxx = xe+1;
 	vx5.miny = ys; vx5.maxy = ye+1;
 	vx5.minz = zs; vx5.maxz = ze+1;
@@ -6603,8 +6443,8 @@ void setblobs (point3d *p, long numcurs, long dacol, long bakit)
 //FLOODFILL3D begins --------------------------------------------------------
 
 #define FILLBUFSIZ 16384 //Use realloc instead!
-typedef struct { unsigned short x, y, z0, z1; } spoint4d; //128K
-static spoint4d fbuf[FILLBUFSIZ];
+typedef struct { unsigned short x, y, z0, z1; } spoint4d_float; //128K
+static spoint4d_float fbuf[FILLBUFSIZ];
 
 long dntil0 (long x, long y, long z)
 {
@@ -6649,8 +6489,8 @@ long uptil1 (long x, long y, long z)
 void setfloodfill3d (long x, long y, long z, long minx, long miny, long minz,
 															long maxx, long maxy, long maxz)
 {
-	long wholemap, j, z0, z1, nz1, i0, i1, (*bakcolfunc)(lpoint3d *);
-	spoint4d a;
+	long wholemap, j, z0, z1, nz1, i0, i1, (*bakcolfunc)(point3d_long *);
+	spoint4d_float a;
 
 	if (minx < 0) minx = 0;
 	if (miny < 0) miny = 0;
@@ -6719,7 +6559,7 @@ floodfill3dskip:;
 
 void hollowfillstart (long x, long y, long z)
 {
-	spoint4d a;
+	spoint4d_float a;
 	char *v;
 	long i, j, z0, z1, i0, i1;
 
@@ -6769,7 +6609,7 @@ floodfill3dskip2:;
 	//hollowfill
 void sethollowfill ()
 {
-	long i, j, l, x, y, z0, z1, *lptr, (*bakcolfunc)(lpoint3d *);
+	long i, j, l, x, y, z0, z1, *lptr, (*bakcolfunc)(point3d_long *);
 	char *v;
 
 	vx5.minx = 0; vx5.maxx = VSID;
@@ -6817,15 +6657,15 @@ void sethollowfill ()
 #define LPATBUFSIZ 14
 static lpoint2d *patbuf;
 #define LPATHASHSIZ 12
-static lpoint3d *pathashdat;
+static point3d_long *pathashdat;
 static long *pathashead, pathashcnt, pathashmax;
 
 static void initpathash ()
 {
 	patbuf = (lpoint2d *)radar;
 	pathashead = (long *)(((long)patbuf)+(1<<LPATBUFSIZ)*sizeof(lpoint2d));
-	pathashdat = (lpoint3d *)(((long)pathashead)+((1<<LPATHASHSIZ)*4));
-	pathashmax = ((max((MAXXDIM*MAXYDIM*27)>>1,(VSID+4)*3*256*4)-((1<<LPATBUFSIZ)*sizeof(lpoint2d))-(1<<LPATHASHSIZ)*4)/12);
+	pathashdat = (point3d_long *)(((long)pathashead)+((1<<LPATHASHSIZ)*4));
+	pathashmax = ((MAX((MAXXDIM*MAXYDIM*27)>>1,(VSID+4)*3*256*4)-((1<<LPATBUFSIZ)*sizeof(lpoint2d))-(1<<LPATHASHSIZ)*4)/12);
 	memset(pathashead,-1,(1<<LPATHASHSIZ)*4);
 	pathashcnt = 0;
 }
@@ -6858,7 +6698,7 @@ static signed char cdir[26*4] = //sqrt(2) =~ 58/41, sqrt(3) =~ 71/41;
 	 1,-1,-1,71,  1,-1, 1,71,  1, 1,-1,71,  1, 1, 1,71,
 };
 
-long findpath (long *pathpos, long pathmax, lpoint3d *p1, lpoint3d *p0)
+long findpath (long *pathpos, long pathmax, point3d_long *p1, point3d_long *p0)
 {
 	long i, j, k, x, y, z, c, nc, xx, yy, zz, bufr, bufw, pcnt;
 
@@ -7001,9 +6841,9 @@ void setkvx (const char *filename, long ox, long oy, long oz, long rot, long bak
 	y0 = y1 = (d[k[3]]^k[4])+k[5];
 	z0 = z1 = (d[k[6]]^k[7])+k[8];
 	d[0] = xsiz; d[1] = ysiz; d[2] = zsiz;
-	x0 = min(x0,(d[k[0]]^k[1])+k[2]); x1 = max(x1,(d[k[0]]^k[1])+k[2]);
-	y0 = min(y0,(d[k[3]]^k[4])+k[5]); y1 = max(y1,(d[k[3]]^k[4])+k[5]);
-	z0 = min(z0,(d[k[6]]^k[7])+k[8]); z1 = max(z1,(d[k[6]]^k[7])+k[8]);
+	x0 = MIN(x0,(d[k[0]]^k[1])+k[2]); x1 = MAX(x1,(d[k[0]]^k[1])+k[2]);
+	y0 = MIN(y0,(d[k[3]]^k[4])+k[5]); y1 = MAX(y1,(d[k[3]]^k[4])+k[5]);
+	z0 = MIN(z0,(d[k[6]]^k[7])+k[8]); z1 = MAX(z1,(d[k[6]]^k[7])+k[8]);
 	if (x0 < 1) { i = 1-x0; x0 += i; x1 += i; k[2] += i; }
 	if (y0 < 1) { i = 1-y0; y0 += i; y1 += i; k[5] += i; }
 	if (z0 < 0) { i = 0-z0; z0 += i; z1 += i; k[8] += i; }
@@ -7111,7 +6951,7 @@ void drawpoint2d (long sx, long sy, long col)
 }
 
 	//This here for game programmer only. I would never use it!
-void drawpoint3d (float x0, float y0, float z0, long col)
+void drawpoint3d_float (float x0, float y0, float z0, long col)
 {
 	float ox, oy, oz, r;
 	long x, y;
@@ -7159,8 +6999,8 @@ void drawtile (long tf, long tp, long tx, long ty, long tcx, long tcy,
 	if (!tf) return;
 	sx0 = sx - mulshr16(tcx,xz); sx1 = sx0 + xz*tx;
 	sy0 = sy - mulshr16(tcy,yz); sy1 = sy0 + yz*ty;
-	x0 = max((sx0+65535)>>16,0); x1 = min((sx1+65535)>>16,xres);
-	y0 = max((sy0+65535)>>16,0); y1 = min((sy1+65535)>>16,yres);
+	x0 = MAX((sx0+65535)>>16,0); x1 = MIN((sx1+65535)>>16,xres);
+	y0 = MAX((sy0+65535)>>16,0); y1 = MIN((sy1+65535)>>16,yres);
 	ui = shldiv16(65536,xz); u = mulshr16(-sx0,ui);
 	vi = shldiv16(65536,yz); v = mulshr16(-sy0,vi);
 	if (!((black^white)&0xff000000)) //Ignore alpha
@@ -7669,7 +7509,7 @@ void drawspherefill (float ox, float oy, float oz, float bakrad, long col)
 			t = sqrt(isq); //fsqrtasm(&isq,&t);
 			ftol(nb-t,&sx1); if (sx1 < 0) sx1 = 0;
 			ftol(nb+t,&sx2);
-			sx2 = min(sx2,xres)-sx1;
+			sx2 = MIN(sx2,xres)-sx1;
 			if (sx2 > 0) clearbuf((void *)((sx1<<2)+p),sx2,col);
 			p += bytesperline; if (p >= sy2) return;
 			isq += isqi; isqi += isqii; nb += nbi;
@@ -7844,7 +7684,7 @@ void drawpolyquad (long rpic, long rbpl, long rxsiz, long rysiz,
 				   float x2, float y2, float z2, float u2, float v2,
 				   float x3, float y3, float z3)
 {
-	point3d fp, fp2;
+	point3d_float fp, fp2;
 	float px[6], py[6], pz[6], pu[6], pv[6], px2[4], py2[4], pz2[4], pu2[4], pv2[4];
 	float f, t, u, v, r, nx, ny, nz, ox, oy, oz, scaler;
 	float dx, dy, db, ux, uy, ub, vx, vy, vb;
@@ -8045,8 +7885,7 @@ void drawpolyquad (long rpic, long rbpl, long rxsiz, long rysiz,
 				if (sx >= sxe) continue;
 				p  = (long *)(sy*bytesperline+(sx<<2)+frameplace);
 				pe = (long *)(sy*bytesperline+(sxe<<2)+frameplace);
-			#if 0
-					//Brute force
+				//Brute force
 				do
 				{
 					f = 1.f/(dx*(float)sx + dy*(float)sy + db);
@@ -8061,123 +7900,6 @@ void drawpolyquad (long rpic, long rbpl, long rxsiz, long rysiz,
 					}
 					p++; sx++;
 				} while (p < pe);
-			#else
-					//Optimized (in C) hyperbolic texture-mapping (Added Z-buffer using SSE/3DNow! for recip's)
-				t = dx*(float)sx + dy*(float)sy + db; r = 1.0 / t;
-				u = ux*(float)sx + uy*(float)sy + ub; ftol(u*r-.5,&iu);
-				v = vx*(float)sx + vy*(float)sy + vb; ftol(v*r-.5,&iv);
-				ftol(t,&dd);
-				ftol((float)iu*dx - ux,&uui); ftol((float)iu*t - u,&uu);
-				ftol((float)iv*dx - vx,&vvi); ftol((float)iv*t - v,&vv);
-				if (ux*t < u*dx) k =    -4; else { uui = -(uui+ddi); uu = -(uu+dd); k =    4; }
-				if (vx*t < v*dx) l = -rbpl; else { vvi = -(vvi+ddi); vv = -(vv+dd); l = rbpl; }
-				iu = iv*rbpl + (iu<<2);
-
-				t *= scaler;
-				#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-				__asm__ __volatile__
-				(
-					".intel_syntax noprefix\n"
-					"mov	ecx, sxe\n"
-					"sub	ecx, sx\n"
-					"xor	eax, eax\n"
-					"lea	ecx, [ecx*4]\n"
-					"sub	eax, ecx\n"
-					"add	ecx, offset dpqdistlut\n"
-                    
-					"test cputype, 1 shl 25\n"
-					"jz short dpqpre3dn\n"
-                    
-					"movss	xmm0, t\n" //dd+ddi*3 dd+ddi*2 dd+ddi*1 dd+ddi*0
-					"shufps	xmm0, xmm0, 0\n"
-					"addps	xmm0, xmm6\n"
-				"dpqbegsse:\n"
-					"rcpps	xmm1, xmm0\n"
-					"addps	xmm0, xmm7\n"
-					"movaps	[eax+ecx], xmm1\n"
-					"add	eax, 16\n"
-					"jl	short dpqbegsse\n"
-					"jmp	short dpqendit\n"
-
-				"dpqpre3dn:\n"
-					"movd	mm0, t\n" //dd+ddi*1 dd+ddi*0
-					"punpckldq	mm0, mm0\n"
-					"pfadd	mm0, dpq3dn[0]\n"
-					"movq	mm7, dpq3dn[8]\n"
-				"dpqbeg3dn:\n"
-					"pswapd	mm2, mm0\n"
-					"pfrcp	mm1, mm0\n"     //mm1: 1/mm0l 1/mm0l
-					"pfrcp	mm2, mm2\n"     //mm2: 1/mm0h 1/mm0h
-					"punpckldq	mm1, mm2\n" //mm1: 1/mm0h 1/mm0l
-					"pfadd	mm0, mm7\n"
-					"movq	[eax+ecx], mm1\n"
-					"add	eax, 8\n"
-					"jl	short dpqbeg3dn\n"
-					"femms\n"
-				"dpqendit:\n"
-					".att_syntax prefix\n"
-				);
-				#endif
-				#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-				_asm
-				{
-					mov	ecx, sxe
-					sub	ecx, sx
-					xor	eax, eax
-					lea	ecx, [ecx*4]
-					sub	eax, ecx
-					add	ecx, offset dpqdistlut
-
-					test	cputype, 1 shl 25
-					jz	short dpqpre3dn
-
-					movss	xmm0, t //dd+ddi*3 dd+ddi*2 dd+ddi*1 dd+ddi*0
-					shufps	xmm0, xmm0, 0
-					addps	xmm0, xmm6
-				dpqbegsse:
-					rcpps	xmm1, xmm0
-					addps	xmm0, xmm7
-					movaps	[eax+ecx], xmm1
-					add	eax, 16
-					jl	short dpqbegsse
-					jmp	short dpqendit
-
-				dpqpre3dn:
-					movd	mm0, t //dd+ddi*1 dd+ddi*0
-					punpckldq	mm0, mm0
-					pfadd	mm0, dpq3dn[0]
-					movq	mm7, dpq3dn[8]
-				dpqbeg3dn:
-					pswapd	mm2, mm0
-					pfrcp	mm1, mm0     //mm1: 1/mm0l 1/mm0l
-					pfrcp	mm2, mm2     //mm2: 1/mm0h 1/mm0h
-					punpckldq	mm1, mm2 //mm1: 1/mm0h 1/mm0l
-					pfadd	mm0, mm7
-					movq	[eax+ecx], mm1
-					add	eax, 8
-					jl	short dpqbeg3dn
-					femms
-				dpqendit:
-				}
-				#endif
-				distlutoffs = ((long)dpqdistlut)-((long)p);
-				do
-				{
-				#if (USEZBUFFER != 0)
-					if (*(long *)(((long)p)+zbufoff) > *(long *)(((long)p)+distlutoffs))
-					{
-						*(long *)(((long)p)+zbufoff) = *(long *)(((long)p)+distlutoffs);
-				#endif
-						if ((unsigned long)iu < uvmax) p[0] = *(long *)(rpic+iu);
-				#if (USEZBUFFER != 0)
-					}
-				#endif
-					dd += ddi;
-					uu += uui; while (uu < 0) { iu += k; uui -= ddi; uu -= dd; }
-					vv += vvi; while (vv < 0) { iu += l; vvi -= ddi; vv -= dd; }
-					p++;
-				} while (p < pe);
-			#endif
 			}
 		}
 		i = j;
@@ -8349,7 +8071,7 @@ static long inkhash (const char *filnam, long *retind)
 //-------------------------- KV6 sprite code begins --------------------------
 
 //EQUIVEC code begins -----------------------------------------------------
-point3d univec[256];
+point3d_float univec[256];
 __ALIGN(8) short iunivec[256][4];
 
 typedef struct
@@ -8390,9 +8112,14 @@ static inline long dmulshr0 (long a, long d, long s, long t)
 
 void equiind2vec (long i, float *x, float *y, float *z)
 {
-	float r;
+	float r, angle;
 	(*z) = (float)i*equivec.zmulk + equivec.zaddk; r = sqrt(1.f - (*z)*(*z));
-	fcossin((float)i*(GOLDRAT*PI*2),x,y); (*x) *= r; (*y) *= r;
+	
+	angle = (float)i*(GOLDRAT*PI*2); //old_COSSIN
+	*x = cos(angle);
+	*y = sin(angle);
+	
+	(*x) *= r; (*y) *= r;
 }
 
 	//Very fast; good quality
@@ -8671,9 +8398,9 @@ extern "C" {
 #endif
 
 extern void *caddasm;
-#define cadd4 ((point4d *)&caddasm)
+#define cadd4 ((point4d_float *)&caddasm)
 extern void *ztabasm;
-#define ztab4 ((point4d *)&ztabasm)
+#define ztab4 ((point4d_float *)&ztabasm)
 extern short qsum0[4], qsum1[4], qbplbpp[4];
 extern long kv6frameplace, kv6bytesperline;
 extern float scisdist;
@@ -8716,7 +8443,7 @@ static int64_t all32767 = 0x7fff7fff7fff7fff;
 static void updatereflects (vx5sprite *spr)
 {
 	int64_t fogmul;
-	point3d tp;
+	point3d_float tp;
 	float f, g, h, fx, fy, fz;
 	long i, j;
 
@@ -8934,7 +8661,7 @@ static void updatereflects (vx5sprite *spr)
 	}
 	else
 	{
-		point3d sprs, sprh, sprf;
+		point3d_float sprs, sprh, sprf;
 		float ff, gg, hh;
 		long k, lightcnt;
 
@@ -9070,7 +8797,7 @@ static void updatereflects (vx5sprite *spr)
 	}
 }
 
-static inline void movps (point4d *dest, point4d *src)
+static inline void movps (point4d_float *dest, point4d_float *src)
 {
 	#ifdef __NOASM__
 	
@@ -9098,7 +8825,7 @@ static inline void movps (point4d *dest, point4d *src)
 	#endif
 }
 
-static inline void intss (point4d *dest, long src)
+static inline void intss (point4d_float *dest, long src)
 {
 	#ifdef __NOASM__
 	
@@ -9126,7 +8853,7 @@ static inline void intss (point4d *dest, long src)
 	#endif
 }
 
-static inline void addps (point4d *sum, point4d *a, point4d *b)
+static inline void addps (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9158,7 +8885,7 @@ static inline void addps (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void mulps (point4d *sum, point4d *a, point4d *b)
+static inline void mulps (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9190,7 +8917,7 @@ static inline void mulps (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void subps (point4d *sum, point4d *a, point4d *b)
+static inline void subps (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9222,7 +8949,7 @@ static inline void subps (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void minps (point4d *sum, point4d *a, point4d *b)
+static inline void minps (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9254,7 +8981,7 @@ static inline void minps (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void maxps (point4d *sum, point4d *a, point4d *b)
+static inline void maxps (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9286,7 +9013,7 @@ static inline void maxps (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void movps_3dn (point4d *dest, point4d *src)
+static inline void movps_3dn (point4d_float *dest, point4d_float *src)
 {
 	#ifdef __NOASM__
 	
@@ -9319,7 +9046,7 @@ static inline void movps_3dn (point4d *dest, point4d *src)
 	#endif
 }
 
-static inline void intss_3dn (point4d *dest, long src)
+static inline void intss_3dn (point4d_float *dest, long src)
 {
 	#ifdef __NOASM__
 	
@@ -9352,7 +9079,7 @@ static inline void intss_3dn (point4d *dest, long src)
 	#endif
 }
 
-static inline void addps_3dn (point4d *sum, point4d *a, point4d *b)
+static inline void addps_3dn (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9390,7 +9117,7 @@ static inline void addps_3dn (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void mulps_3dn (point4d *sum, point4d *a, point4d *b)
+static inline void mulps_3dn (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9428,7 +9155,7 @@ static inline void mulps_3dn (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void subps_3dn (point4d *sum, point4d *a, point4d *b)
+static inline void subps_3dn (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9466,7 +9193,7 @@ static inline void subps_3dn (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void minps_3dn (point4d *sum, point4d *a, point4d *b)
+static inline void minps_3dn (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9504,7 +9231,7 @@ static inline void minps_3dn (point4d *sum, point4d *a, point4d *b)
 	#endif
 }
 
-static inline void maxps_3dn (point4d *sum, point4d *a, point4d *b)
+static inline void maxps_3dn (point4d_float *sum, point4d_float *a, point4d_float *b)
 {
 	#ifdef __NOASM__
 	
@@ -9556,11 +9283,11 @@ static inline void maxps_3dn (point4d *sum, point4d *a, point4d *b)
 #define MAXZSIZ 1024
 static void kv6draw (vx5sprite *spr)
 {
-	point4d *r0, *r1, *r2;
+	point4d_float *r0, *r1, *r2;
 	kv6voxtype *xv, *yv, *v0, *v1;
 	kv6data *kv;
-	point3d ts, th, tf;
-	point3d npos, nstr, nhei, nfor, tp, tp2;
+	point3d_float ts, th, tf;
+	point3d_float npos, nstr, nhei, nfor, tp, tp2;
 	float f;
 	long x, y, z, inx, iny, inz, nxplanemin, nxplanemax;
 	unsigned short *ylenptr;
@@ -9642,7 +9369,7 @@ static void kv6draw (vx5sprite *spr)
 #endif
 
 #if (USEZBUFFER == 0)
-	lpoint3d lp;
+	point3d_long lp;
 	if (!cansee(&gipos,&spr->p,&lp)) return; //Very crappy Z-buffer!
 #endif
 
@@ -9671,9 +9398,9 @@ static void kv6draw (vx5sprite *spr)
 		inz = (npos.x*tp.z + nstr.x*tp2.y + nhei.x*tp2.z)*f;
 	}
 	else { inx = iny = inz = -1; }
-	inx = lbound(inx,-1,kv->xsiz);
-	iny = lbound(iny,-1,kv->ysiz);
-	inz = lbound(inz,-1,kv->zsiz);
+	inx = BOUND(inx,-1,kv->xsiz);
+	iny = BOUND(iny,-1,kv->ysiz);
+	inz = BOUND(inz,-1,kv->zsiz);
 
 	f = nhei.x; nhei.x = nfor.x; nfor.x = -f;
 	f = nhei.y; nhei.y = nfor.y; nfor.y = -f;
@@ -9923,8 +9650,6 @@ static void kv6draw (vx5sprite *spr)
 	}
 	clearMMX();
 }
-
-#endif //huge #ifndef _DOS
 
 //-------------------------- KFA sprite code begins --------------------------
 
@@ -10192,7 +9917,7 @@ void getspr (vx5sprite *s, const char *filnam)
 }
 
 	//Given vector a, returns b&c that makes (a,b,c) orthonormal
-void genperp (point3d *a, point3d *b, point3d *c)
+void genperp (point3d_float *a, point3d_float *b, point3d_float *c)
 {
 	float t;
 
@@ -10214,11 +9939,11 @@ void genperp (point3d *a, point3d *b, point3d *c)
 	//[asy ahy agy aoy][bsy bhy bgy boy] = [csy chy cgy coy]
 	//[asz ahz agz aoz][bsz bhz bgz boz]   [csz chz cgz coz]
 	//[  0   0   0   1][  0   0   0   1]   [  0   0   0   1]
-void mat0 (point3d *as, point3d *ah, point3d *ag, point3d *ao,
-			  point3d *bs, point3d *bh, point3d *bg, point3d *bo,
-			  point3d *cs, point3d *ch, point3d *cg, point3d *co)
+void mat0 (point3d_float *as, point3d_float *ah, point3d_float *ag, point3d_float *ao,
+			  point3d_float *bs, point3d_float *bh, point3d_float *bg, point3d_float *bo,
+			  point3d_float *cs, point3d_float *ch, point3d_float *cg, point3d_float *co)
 {
-	point3d ts, th, tg, to;
+	point3d_float ts, th, tg, to;
 	ts.x = bs->x*cs->x + bh->x*ch->x + bg->x*cg->x;
 	ts.y = bs->x*cs->y + bh->x*ch->y + bg->x*cg->y;
 	ts.z = bs->x*cs->z + bh->x*ch->z + bg->x*cg->z;
@@ -10239,11 +9964,11 @@ void mat0 (point3d *as, point3d *ah, point3d *ag, point3d *ao,
 	//[asy ahy agy aoy][bsy bhy bgy boy] = [csy chy cgy coy]
 	//[asz ahz agz aoz][bsz bhz bgz boz]   [csz chz cgz coz]
 	//[  0   0   0   1][  0   0   0   1]   [  0   0   0   1]
-void mat1 (point3d *as, point3d *ah, point3d *ag, point3d *ao,
-			  point3d *bs, point3d *bh, point3d *bg, point3d *bo,
-			  point3d *cs, point3d *ch, point3d *cg, point3d *co)
+void mat1 (point3d_float *as, point3d_float *ah, point3d_float *ag, point3d_float *ao,
+			  point3d_float *bs, point3d_float *bh, point3d_float *bg, point3d_float *bo,
+			  point3d_float *cs, point3d_float *ch, point3d_float *cg, point3d_float *co)
 {
-	point3d ts, th, tg, to;
+	point3d_float ts, th, tg, to;
 	float x = co->x-ao->x, y = co->y-ao->y, z = co->z-ao->z;
 	ts.x = cs->x*as->x + cs->y*as->y + cs->z*as->z;
 	ts.y = cs->x*ah->x + cs->y*ah->y + cs->z*ah->z;
@@ -10265,9 +9990,9 @@ void mat1 (point3d *as, point3d *ah, point3d *ag, point3d *ao,
 	//[asy ahy afy aoy][bsy bhy bfy boy] = [csy chy cfy coy]
 	//[asz ahz afz aoz][bsz bhz bfz boz]   [csz chz cfz coz]
 	//[  0   0   0   1][  0   0   0   1]   [  0   0   0   1]
-void mat2 (point3d *a_s, point3d *a_h, point3d *a_f, point3d *a_o,
-			  point3d *b_s, point3d *b_h, point3d *b_f, point3d *b_o,
-			  point3d *c_s, point3d *c_h, point3d *c_f, point3d *c_o)
+void mat2 (point3d_float *a_s, point3d_float *a_h, point3d_float *a_f, point3d_float *a_o,
+			  point3d_float *b_s, point3d_float *b_h, point3d_float *b_f, point3d_float *b_o,
+			  point3d_float *c_s, point3d_float *c_h, point3d_float *c_f, point3d_float *c_o)
 {
 	if (cputype&(1<<25))
 	{
@@ -10472,7 +10197,7 @@ void mat2 (point3d *a_s, point3d *a_h, point3d *a_f, point3d *a_o,
 	}
 	else
 	{
-		point3d ts, th, tf, to;
+		point3d_float ts, th, tf, to;
 		ts.x = a_s->x*b_s->x + a_h->x*b_s->y + a_f->x*b_s->z;
 		ts.y = a_s->y*b_s->x + a_h->y*b_s->y + a_f->y*b_s->z;
 		ts.z = a_s->z*b_s->x + a_h->z*b_s->y + a_f->z*b_s->z;
@@ -10491,8 +10216,8 @@ void mat2 (point3d *a_s, point3d *a_h, point3d *a_f, point3d *a_o,
 
 static void setlimb (kfatype *kfa, long i, long p, long trans_type, short val)
 {
-	point3d ps, ph, pf, pp;
-	point3d qs, qh, qf, qp;
+	point3d_float ps, ph, pf, pp;
+	point3d_float qs, qh, qf, qp;
 	float r[2];
 
 		//Generate orthonormal matrix in world space for child limb
@@ -10501,7 +10226,7 @@ static void setlimb (kfatype *kfa, long i, long p, long trans_type, short val)
 	switch (trans_type)
 	{
 		case 0: //Hinge rotate!
-			//fcossin(((float)val)*(PI/32768.0),&c,&s);
+			//COSSIN(((float)val)*(PI/32768.0),c,s);
 			ucossin(((long)val)<<16,r);
 			ph = qh; pf = qf;
 			qh.x = ph.x*r[0] - pf.x*r[1]; qf.x = ph.x*r[1] + pf.x*r[0];
@@ -10607,7 +10332,7 @@ void animsprite (vx5sprite *s, long ti)
 
 static void kfadraw (vx5sprite *s)
 {
-	point3d tp;
+	point3d_float tp;
 	kfatype *kfa;
 	long i, j, k;
 
@@ -10646,7 +10371,7 @@ void drawsprite (vx5sprite *spr)
 
 void setkv6 (vx5sprite *spr)
 {
-	point3d r0, r1;
+	point3d_float r0, r1;
 	long x, y, vx, vy, vz;
 	kv6data *kv;
 	kv6voxtype *v, *ve;
@@ -10727,11 +10452,11 @@ static inline long dmulshr22 (long a, long b, long c, long d)
 //#endif more mysterious _MSC_VER
 
 static kv6data *gfrezkv;
-static lpoint3d gfrezx, gfrezy, gfrezz, gfrezp;
+static point3d_long gfrezx, gfrezy, gfrezz, gfrezp;
 static signed char gkv6colx[27] = {0,  0, 0, 0, 0, 1,-1, -1,-1,-1,-1, 0, 0, 0, 0, 1, 1, 1, 1,  1, 1, 1, 1,-1,-1,-1,-1};
 static signed char gkv6coly[27] = {0,  0, 0, 1,-1, 0, 0,  0, 0,-1, 1, 1, 1,-1,-1, 0, 0,-1, 1,  1, 1,-1,-1, 1, 1,-1,-1};
 static signed char gkv6colz[27] = {0,  1,-1, 0, 0, 0, 0, -1, 1, 0, 0, 1,-1, 1,-1, 1,-1, 0, 0,  1,-1, 1,-1, 1,-1, 1,-1};
-long kv6colfunc (lpoint3d *p)
+long kv6colfunc (point3d_long *p)
 {
 	kv6voxtype *v0, *v1, *v, *ve;
 	long i, j, k, x, y, z, ox, oy, nx, ny, nz, mind, d;
@@ -10787,7 +10512,7 @@ long kv6colfunc (lpoint3d *p)
 
 static void kv6colfuncinit (vx5sprite *spr, float det)
 {
-	point3d tp, tp2;
+	point3d_float tp, tp2;
 	float f;
 
 	gfrezkv = spr->voxnum; if (!gfrezkv) { vx5.colfunc = curcolfunc; return; }
@@ -10830,7 +10555,7 @@ static gfrezt gfrez[6];
 typedef struct { char z[2]; long n; } slstype;
 void setkv6 (vx5sprite *spr, long dacol)
 {
-	point3d tp, tp2; float f, det;
+	point3d_float tp, tp2; float f, det;
 	long i, j, k, x, y, z, c, d, x0, y0, z0, x1, y1, z1, xi, yi, zi;
 	long xo, yo, zo, xu, yu, zu, xv, yv, zv, stu, stv, tu, tv;
 	long xx, yy, xmin, xmax, ymin, ymax, isrhs, ihxi, ihyi, ihzi, syshpit;
@@ -11067,7 +10792,7 @@ freezesprcont:;
 
 	//Sprite structure is already allocated
 	//kv6, vox, xlen, ylen are all malloced in here!
-long meltsphere (vx5sprite *spr, lpoint3d *hit, long hitrad)
+long meltsphere (vx5sprite *spr, point3d_long *hit, long hitrad)
 {
 	long i, j, x, y, z, xs, ys, zs, xe, ye, ze, sq, z0, z1;
 	long oxvoxs, oyvoxs, numvoxs, cx, cy, cz, cw;
@@ -11077,9 +10802,9 @@ long meltsphere (vx5sprite *spr, lpoint3d *hit, long hitrad)
 	unsigned long *xlenptr;
 	unsigned short *ylenptr;
 
-	xs = max(hit->x-hitrad,0); xe = min(hit->x+hitrad,VSID-1);
-	ys = max(hit->y-hitrad,0); ye = min(hit->y+hitrad,VSID-1);
-	zs = max(hit->z-hitrad,0); ze = min(hit->z+hitrad,MAXZDIM-1);
+	xs = MAX(hit->x-hitrad,0); xe = MIN(hit->x+hitrad,VSID-1);
+	ys = MAX(hit->y-hitrad,0); ye = MIN(hit->y+hitrad,VSID-1);
+	zs = MAX(hit->z-hitrad,0); ze = MIN(hit->z+hitrad,MAXZDIM-1);
 	if ((xs > xe) || (ys > ye) || (zs > ze)) return(0);
 
 	if (hitrad >= SETSPHMAXRAD-1) hitrad = SETSPHMAXRAD-2;
@@ -11113,7 +10838,7 @@ long meltsphere (vx5sprite *spr, lpoint3d *hit, long hitrad)
 			{
 				while (*(long *)&tempfloatbuf[sq] <  *(long *)&f) sq++;
 				while (*(long *)&tempfloatbuf[sq] >= *(long *)&f) sq--;
-				z0 = max(hit->z-sq,zs); z1 = min(hit->z+sq+1,ze);
+				z0 = MAX(hit->z-sq,zs); z1 = MIN(hit->z+sq+1,ze);
 				for(z=z0;z<z1;z++)
 				{
 					i = getcube(x,y,z); //0:air, 1:unexposed solid, 2:vbuf col ptr
@@ -11172,7 +10897,7 @@ long meltsphere (vx5sprite *spr, lpoint3d *hit, long hitrad)
 			{
 				while (*(long *)&tempfloatbuf[sq] <  *(long *)&f) sq++;
 				while (*(long *)&tempfloatbuf[sq] >= *(long *)&f) sq--;
-				z0 = max(hit->z-sq,zs); z1 = min(hit->z+sq+1,ze);
+				z0 = MAX(hit->z-sq,zs); z1 = MIN(hit->z+sq+1,ze);
 				for(z=z0;z<z1;z++)
 				{
 					i = getcube(x,y,z); //0:air, 1:unexposed solid, 2:vbuf col ptr
@@ -11193,7 +10918,7 @@ long meltsphere (vx5sprite *spr, lpoint3d *hit, long hitrad)
 
 	//Sprite structure is already allocated
 	//kv6, vox, xlen, ylen are all malloced in here!
-long meltspans (vx5sprite *spr, vspans *lst, long lstnum, lpoint3d *offs)
+long meltspans (vx5sprite *spr, vspans *lst, long lstnum, point3d_long *offs)
 {
 	float f;
 	long i, j, x, y, z, xs, ys, zs, xe, ye, ze, z0, z1;
@@ -11314,9 +11039,9 @@ static void setlighting (long x0, long y0, long z0, long x1, long y1, long z1, l
 	long i, x, y;
 	char *v;
 
-	x0 = max(x0,0); x1 = min(x1,VSID);
-	y0 = max(y0,0); y1 = min(y1,VSID);
-	z0 = max(z0,0); z1 = min(z1,MAXZDIM);
+	x0 = MAX(x0,0); x1 = MIN(x1,VSID);
+	y0 = MAX(y0,0); y1 = MIN(y1,VSID);
+	z0 = MAX(z0,0); z1 = MIN(z1,MAXZDIM);
 
 	lval <<= 24;
 
@@ -11384,7 +11109,7 @@ static float lightsub[MAXLIGHTS];
 	//Re-calculates lighting byte #4 of all voxels inside bounding box
 void updatelighting (long x0, long y0, long z0, long x1, long y1, long z1)
 {
-	point3d tp;
+	point3d_float tp;
 	float f, g, h, fx, fy, fz;
 	long i, j, x, y, z, sz0, sz1, offs, cstat, lightcnt;
 	long x2, y2, x3, y3;
@@ -11393,18 +11118,18 @@ void updatelighting (long x0, long y0, long z0, long x1, long y1, long z1)
 	if (!vx5.lightmode) return;
 	xbsox = -17;
 
-	x0 = max(x0-ESTNORMRAD,0); x1 = min(x1+ESTNORMRAD,VSID);
-	y0 = max(y0-ESTNORMRAD,0); y1 = min(y1+ESTNORMRAD,VSID);
-	z0 = max(z0-ESTNORMRAD,0); z1 = min(z1+ESTNORMRAD,MAXZDIM);
+	x0 = MAX(x0-ESTNORMRAD,0); x1 = MIN(x1+ESTNORMRAD,VSID);
+	y0 = MAX(y0-ESTNORMRAD,0); y1 = MIN(y1+ESTNORMRAD,VSID);
+	z0 = MAX(z0-ESTNORMRAD,0); z1 = MIN(z1+ESTNORMRAD,MAXZDIM);
 
 	x2 = x0; y2 = y0;
 	x3 = x1; y3 = y1;
 	for(y0=y2;y0<y3;y0=y1)
 	{
-		y1 = min(y0+64,y3);  //"justfly -" (256 lights): +1024:41sec 512:29 256:24 128:22 64:21 32:21 16:21
+		y1 = MIN(y0+64,y3);  //"justfly -" (256 lights): +1024:41sec 512:29 256:24 128:22 64:21 32:21 16:21
 		for(x0=x2;x0<x3;x0=x1)
 		{
-			x1 = min(x0+64,x3);
+			x1 = MIN(x0+64,x3);
 
 
 			if (vx5.lightmode == 2)
@@ -11560,9 +11285,9 @@ void checkfloatinbox (long x0, long y0, long z0, long x1, long y1, long z1)
 	if (flchkcnt >= FLCHKSIZ) return;
 
 		//Make all off-by-1 hacks in other code unnecessary
-	x0 = max(x0-1,0); x1 = min(x1+1,VSID);
-	y0 = max(y0-1,0); y1 = min(y1+1,VSID);
-	z0 = max(z0-1,0); z1 = min(z1+1,MAXZDIM);
+	x0 = MAX(x0-1,0); x1 = MIN(x1+1,VSID);
+	y0 = MAX(y0-1,0); y1 = MIN(y1+1,VSID);
+	z0 = MAX(z0-1,0); z1 = MIN(z1+1,MAXZDIM);
 
 		//Add local box's slabs to flchk list - checked in next dofalls()
 	for(y=y0;y<y1;y++)
@@ -11625,7 +11350,7 @@ void isnewfloatingchg (long a, long b)
 long isnewfloating (flstboxtype *flb)
 {
 	float f;
-	lpoint3d p, cen;
+	point3d_long p, cen;
 	long i, j, nx, ny, z0, z1, fend, ovlstcnt, mass;
 	char *v, *ov;
 
@@ -11778,8 +11503,8 @@ void dofall (long i)
 	if (vx5.vxlmipuse > 1)
 	{
 		long x0, y0, x1, y1;
-		x0 = max(vx5.flstcnt[i].x0,0); x1 = min(vx5.flstcnt[i].x1+1,VSID);
-		y0 = max(vx5.flstcnt[i].y0,0); y1 = min(vx5.flstcnt[i].y1+1,VSID);
+		x0 = MAX(vx5.flstcnt[i].x0,0); x1 = MIN(vx5.flstcnt[i].x1+1,VSID);
+		y0 = MAX(vx5.flstcnt[i].y0,0); y1 = MIN(vx5.flstcnt[i].y1+1,VSID);
 		//FIX ME!!!
 		//if ((x1 > x0) && (y1 > y0)) genmipvxl(x0,y0,x1,y1); //Don't replace with bbox!
 	}
@@ -11799,9 +11524,9 @@ long meltfall (vx5sprite *spr, long fi, long delvxl)
 
 	if (vx5.flstcnt[fi].i1 < 0) return(0);
 
-	xs = max(vx5.flstcnt[fi].x0,0); xe = min(vx5.flstcnt[fi].x1,VSID-1);
-	ys = max(vx5.flstcnt[fi].y0,0); ye = min(vx5.flstcnt[fi].y1,VSID-1);
-	zs = max(vx5.flstcnt[fi].z0,0); ze = min(vx5.flstcnt[fi].z1,MAXZDIM-1);
+	xs = MAX(vx5.flstcnt[fi].x0,0); xe = MIN(vx5.flstcnt[fi].x1,VSID-1);
+	ys = MAX(vx5.flstcnt[fi].y0,0); ye = MIN(vx5.flstcnt[fi].y1,VSID-1);
+	zs = MAX(vx5.flstcnt[fi].z0,0); ze = MIN(vx5.flstcnt[fi].z1,MAXZDIM-1);
 	if ((xs > xe) || (ys > ye) || (zs > ze)) return(0);
 
 		//Need to know how many voxels to allocate... SLOW :(
@@ -12005,8 +11730,9 @@ void voxsetframebuffer (long p, long b, long x, long y)
 	long i;
 
 	frameplace = p;
-	if (x > MAXXDIM) x = MAXXDIM; //This sucks, but it crashes without it
-	if (y > MAXYDIM) y = MAXYDIM;
+	
+	x = MIN(x,MAXXDIM); //This sucks, but it crashes without it
+	y = MIN(y,MAXYDIM);
 
 		//Set global variables used by kv6draw's PIII asm (drawboundcube)
 	qsum1[3] = qsum1[1] = 0x7fff-y; qsum1[2] = qsum1[0] = 0x7fff-x;
@@ -12045,8 +11771,8 @@ void voxsetframebuffer (long p, long b, long x, long y)
 		{
 			ofogdist = vx5.maxscandist;
 
-			//foglut[?>>20] = min(?*32767/vx5.maxscandist,32767)
-#if 0
+			//foglut[?>>20] = MIN(?*32767/vx5.maxscandist,32767)
+			
 			long j, k, l;
 			j = 0; l = 0x7fffffff/vx5.maxscandist;
 			for(i=0;i<2048;i++)
@@ -12056,61 +11782,6 @@ void voxsetframebuffer (long p, long b, long x, long y)
 				foglut[i] = (((int64_t)k)<<32)+(((int64_t)k)<<16)+((int64_t)k);
 			}
 			while (i < 2048) foglut[i++] = all32767;
-#else
-			i = 0x7fffffff/vx5.maxscandist;
-			#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-			__asm__ __volatile__
-			(
-				".intel_syntax noprefix\n"
-				"xor	eax, eax\n"
-				"mov	ecx, -2048*8\n"
-				"mov	edx, i\n"
-			"fogbeg:\n"
-				"movd	mm0, eax\n"
-				"add	eax, edx\n"
-				"jo	short fogend\n"
-				"pshufw	mm0, mm0, 0x55\n"
-				"movq	foglut[ecx+2048*8], mm0\n"
-				"add	ecx, 8\n"
-				"js	short fogbeg\n"
-				"jmp	short fogend2\n"
-			"fogend:\n"
-				"movq	mm0, all32767\n"
-			"fogbeg2:\n"
-				"movq	foglut[ecx+2048*8], mm0\n"
-				"add	ecx, 8\n"
-				"js	short fogbeg2\n"
-			"fogend2:\n"
-				"emms\n"
-				".att_syntax prefix\n"
-			);
-			#endif
-			#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-			_asm
-			{
-				xor	eax, eax
-				mov	ecx, -2048*8
-				mov	edx, i
-			fogbeg:
-				movd	mm0, eax
-				add	eax, edx
-				jo	short fogend
-				pshufw	mm0, mm0, 0x55
-				movq	foglut[ecx+2048*8], mm0
-				add	ecx, 8
-				js	short fogbeg
-				jmp	short fogend2
-			fogend:
-				movq	mm0, all32767
-			fogbeg2:
-				movq	foglut[ecx+2048*8], mm0
-				add	ecx, 8
-				js	short fogbeg2
-			fogend2:
-				emms
-			}
-			#endif
-#endif
 		}
 	} else ofogdist = -1;
 
@@ -12215,10 +11886,10 @@ long screencapture32bit (const char *fname)
 }
 
 	//Captures all direction onto an un-wrapped cube
-long surroundcapture32bit (dpoint3d *pos, const char *fname, long boxsiz)
+long surroundcapture32bit (point3d_double *pos, const char *fname, long boxsiz)
 {
-	lpoint3d hit;
-	dpoint3d d;
+	point3d_long hit;
+	point3d_double d;
 	long x, y, hboxsiz, *hind, hdir;
 	float f;
 
@@ -12388,7 +12059,7 @@ long initvoxlap ()
 
 
 	  //WARNING: xres&yres are local to VOXLAP5.C so don't rely on them here!
-	if (!(radarmem = (long *)malloc(max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8))))
+	if (!(radarmem = (long *)malloc(MAX((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8))))
 		return(-1);
 	radar = (long *)((((long)radarmem)+7)&~7);
 
@@ -12451,8 +12122,8 @@ long initvoxlap ()
 		{
 			if (zz <= 0) i = (long)(((float)zz-.5f)*f); else i = (long)(((float)zz-.5f)*ff);
 			if (zz >= 0) j = (long)(((float)zz+.5f)*f); else j = (long)(((float)zz+.5f)*ff);
-			ffxptr[zz].x = (unsigned short)max(i+(GSIZ>>1),0);
-			ffxptr[zz].y = (unsigned short)min(j+(GSIZ>>1),GSIZ);
+			ffxptr[zz].x = (unsigned short)MAX(i+(GSIZ>>1),0);
+			ffxptr[zz].y = (unsigned short)MIN(j+(GSIZ>>1),GSIZ);
 		}
 	}
 	for(i=0;i<=25*5;i+=5) xbsbuf[i] = 0x00000000ffffffff;
@@ -12468,7 +12139,7 @@ long initvoxlap ()
 	//{
 	//   univec[i].z = ((float)((i<<1)-254))/255.0;
 	//   f = sqrt(1.0 - univec[i].z*univec[i].z);
-	//   fcossin((float)i*(GOLDRAT*PI*2),&univec[i].x,&univec[i].y);
+	//   COSSIN((float)i*(GOLDRAT*PI*2),univec[i].x,univec[i].y);
 	//   univec[i].x *= f; univec[i].y *= f;
 	//}
 	//univec[255].x = univec[255].y = univec[255].z = 0;
@@ -12533,7 +12204,7 @@ long initvoxlap ()
 	printf("Memory statistics upon exit: (all numbers in bytes)");
 	printf("\n");
 	if (screen) printf("   screen: %8ld\n",imageSize);
-	printf("    radar: %8ld\n",max((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8));
+	printf("    radar: %8ld\n",MAX((((MAXXDIM*MAXYDIM*27)>>1)+7)&~7,(VSID+4)*3*SCPITCH*4+8));
 	printf("  bacsptr: %8ld\n",sizeof(bacsptr));
 	printf("     sptr: %8ld\n",(VSID*VSID)<<2);
 	printf("     vbuf: %8ld(%8ld)\n",(j+VSID*VSID+l)<<2,VOXSIZ);

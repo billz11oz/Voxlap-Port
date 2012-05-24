@@ -1,4 +1,4 @@
-// VOXLAP engine by Ken Silverman (http://advsys.net/ken)
+﻿// VOXLAP engine by Ken Silverman (http://advsys.net/ken)
 
 // This file has been modified from Ken Silverman's original release
 
@@ -19,7 +19,7 @@
 
 long kfatim = -1, okfatim = -1;
 
-dpoint3d ipos, istr, ihei, ifor;
+point3d_double ipos, istr, ihei, ifor;
 float vx5hx, vx5hy, vx5hz;
 long bstatus = 0, obstatus = 0;
 float fmousymul = -1.0;
@@ -52,7 +52,7 @@ float fsynctics;
 long frameval[AVERAGEFRAMES], numframes = 0, averagefps = 0;
 
 char kfanam[MAX_PATH] = "", kv6nam[MAX_PATH] = "";
-char tempbuf[max(MAX_PATH+256,4096)];
+char tempbuf[MAX(MAX_PATH+256,4096)];
 
 	//LIMB information
 #define MAXSPRITES 1024
@@ -98,19 +98,6 @@ static inline void ftol (float f, long *a)
 		mov eax, a
 		fld f
 		fistp dword ptr [eax]
-	}
-}
-
-static inline void fcossin (float a, float *c, float *s)
-{
-	_asm
-	{
-		fld a
-		fsincos
-		mov eax, c
-		fstp dword ptr [eax]
-		mov eax, s
-		fstp dword ptr [eax]
 	}
 }
 
@@ -223,9 +210,9 @@ static char *savefileselect (char *mess, char *spec, char *defext)
 //-----------------------  WIN file select code ends -------------------------
 
 	//Note: ³p1-p0³ must equal ³p2-p0³
-void drawarc3d (point3d *p0, point3d *p1, point3d *p2, long col)
+void drawarc3d (point3d_float *p0, point3d_float *p1, point3d_float *p2, long col)
 {
-	point3d tp, tp2;
+	point3d_float tp, tp2;
 	float f, t, d1, d2;
 
 
@@ -250,9 +237,9 @@ void drawarc3d (point3d *p0, point3d *p1, point3d *p2, long col)
 }
 
 	//Converts from sprite coordinates to world coordinates
-void spr2world (vx5sprite *sp, point3d *i, point3d *o)
+void spr2world (vx5sprite *sp, point3d_float *i, point3d_float *o)
 {
-	point3d tp = (*i);
+	point3d_float tp = (*i);
 	o->x = tp.x*sp->s.x + tp.y*sp->h.x + tp.z*sp->f.x + sp->p.x;
 	o->y = tp.x*sp->s.y + tp.y*sp->h.y + tp.z*sp->f.y + sp->p.y;
 	o->z = tp.x*sp->s.z + tp.y*sp->h.z + tp.z*sp->f.z + sp->p.z;
@@ -537,21 +524,21 @@ long loadsplitkv6 (char *filnam)
 	return(1);
 }
 
-extern void genperp (point3d *, point3d *, point3d *);
-extern void mat0 (point3d *, point3d *, point3d *, point3d *,
-						point3d *, point3d *, point3d *, point3d *,
-						point3d *, point3d *, point3d *, point3d *);
-extern void mat1 (point3d *, point3d *, point3d *, point3d *,
-						point3d *, point3d *, point3d *, point3d *,
-						point3d *, point3d *, point3d *, point3d *);
-extern void mat2 (point3d *, point3d *, point3d *, point3d *,
-						point3d *, point3d *, point3d *, point3d *,
-						point3d *, point3d *, point3d *, point3d *);
+extern void genperp (point3d_float *, point3d_float *, point3d_float *);
+extern void mat0 (point3d_float *, point3d_float *, point3d_float *, point3d_float *,
+						point3d_float *, point3d_float *, point3d_float *, point3d_float *,
+						point3d_float *, point3d_float *, point3d_float *, point3d_float *);
+extern void mat1 (point3d_float *, point3d_float *, point3d_float *, point3d_float *,
+						point3d_float *, point3d_float *, point3d_float *, point3d_float *,
+						point3d_float *, point3d_float *, point3d_float *, point3d_float *);
+extern void mat2 (point3d_float *, point3d_float *, point3d_float *, point3d_float *,
+						point3d_float *, point3d_float *, point3d_float *, point3d_float *,
+						point3d_float *, point3d_float *, point3d_float *, point3d_float *);
 
 static void setlimb (long i, long p, long trans_type, short val)
 {
-	point3d ps, ph, pf, pp;
-	point3d qs, qh, qf, qp;
+	point3d_float ps, ph, pf, pp;
+	point3d_float qs, qh, qf, qp;
 	float c, s;
 
 		//Generate orthonormal matrix in world space for child limb
@@ -560,7 +547,7 @@ static void setlimb (long i, long p, long trans_type, short val)
 	switch (trans_type)
 	{
 		case 0: //Hinge rotate!
-			fcossin(((float)val)*(PI/32768.0),&c,&s);
+			COSSIN(((float)val)*(PI/32768.0),c,s);
 			ph = qh; pf = qf;
 			qh.x = ph.x*c - pf.x*s; qf.x = ph.x*s + pf.x*c;
 			qh.y = ph.y*c - pf.y*s; qf.y = ph.y*s + pf.y*c;
@@ -796,8 +783,8 @@ void doframe ()
 {
 	vx5sprite *sp;
 	kv6voxtype *kp;
-	point3d tp, tp1, tp2, tp3, tp4, *tptr;
-	lpoint3d lp, grablp;
+	point3d_float tp, tp1, tp2, tp3, tp4, *tptr;
+	point3d_long lp, grablp;
 	long i, j, k, x, y, z, zz, trat, frameplace, bpl, xdim, ydim, key;
 	float f, fmousx, fmousy;
 	char *v;
@@ -933,7 +920,7 @@ void doframe ()
 			for(i=-16;i;i++)
 			{
 				j = rand(); tp2.z = ((float)(j-16384))/16384.0;
-				fcossin((float)j*2.399963229728654,&tp2.x,&tp2.y);
+				COSSIN((float)j*2.399963229728654,tp2.x,tp2.y);
 				f = sqrt(1.0 - tp2.z*tp2.z)*.5; tp2.x *= f; tp2.y *= f; tp2.z *= .5;
 				drawline3d(tp.x,tp.y,tp.z,tp.x+tp2.x,tp.y+tp2.y,tp.z+tp2.z,0x80ffffff);
 			}
@@ -994,7 +981,7 @@ void doframe ()
 			for(i=-16;i;i++)
 			{
 				j = rand(); tp2.z = ((float)(j-16384))/16384.0;
-				fcossin((float)j*2.399963229728654,&tp2.x,&tp2.y);
+				COSSIN((float)j*2.399963229728654,tp2.x,tp2.y);
 				f = sqrt(1.0 - tp2.z*tp2.z)*.5; tp2.x *= f; tp2.y *= f; tp2.z *= .5;
 				drawline3d(tp.x,tp.y,tp.z,tp.x+tp2.x,tp.y+tp2.y,tp.z+tp2.z,0x80ffffff);
 			}
@@ -1127,9 +1114,9 @@ void doframe ()
 
 		//Print MAX FRAME RATE
 	ftol(1000.0/fsynctics,&frameval[numframes&(AVERAGEFRAMES-1)]);
-	for(j=AVERAGEFRAMES-1,i=frameval[0];j>0;j--) i = max(i,frameval[j]);
+	for(j=AVERAGEFRAMES-1,i=frameval[0];j>0;j--) i = MAX(i,frameval[j]);
 	averagefps = ((averagefps*3+i)>>2);
-	print4x6(0,0,0xc0c0c0,-1,"%.1f (%0.2fms)",(float)averagefps*.001,1000000.0/max((float)averagefps,1));
+	print4x6(0,0,0xc0c0c0,-1,"%.1f (%0.2fms)",(float)averagefps*.001,1000000.0/MAX((float)averagefps,1));
 
 	stopdirectdraw();
 	nextpage();
@@ -1152,7 +1139,7 @@ skipalldraw:;
 		if (keystatus[0x36]) f *= 4.0;
 
 		tp1.z = ((float)(keystatus[0x33]-keystatus[0x34]))*f;
-		fcossin(tp1.z,&tp1.x,&tp1.y);
+		COSSIN(tp1.z,tp1.x,tp1.y);
 		tp.x = ipos.x; tp.y = ipos.y; ipos.x = tp.x*tp1.x-tp.y*tp1.y; ipos.y = tp.y*tp1.x+tp.x*tp1.y;
 		tp.x = istr.x; tp.y = istr.y; istr.x = tp.x*tp1.x-tp.y*tp1.y; istr.y = tp.y*tp1.x+tp.x*tp1.y;
 		tp.x = ihei.x; tp.y = ihei.y; ihei.x = tp.x*tp1.x-tp.y*tp1.y; ihei.y = tp.y*tp1.x+tp.x*tp1.y;
@@ -1163,7 +1150,7 @@ skipalldraw:;
 	{
 		if (!bstatus)
 		{
-			f = min(vx5hx/vx5hz,1.0);
+			f = MIN(vx5hx/vx5hz,1.0);
 			dorthorotate(istr.z*.1,fmousy*f*.008*fmousymul,fmousx*f*.008,&istr,&ihei,&ifor);
 		}
 
