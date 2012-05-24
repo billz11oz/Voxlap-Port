@@ -369,34 +369,10 @@ void botinit ()
 
 static inline void fcossin (float a, float *c, float *s)
 {
-	#if defined(__NOASM__)
-	*c = cos(a);
-	*s = sin(a);
-	#endif
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	DWORD PTR a\n\t"
-		"fsincos\n\t"
-		"mov	eax, c\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		"mov	eax, s\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld	a
-		fsincos
-		mov	eax, c
-		fstp	dword ptr [eax]
-		mov	eax, s
-		fstp	dword ptr [eax]
-	}
-	#endif
+	float angle = a;
+	*c = cos(angle);
+	*s = sin(angle);
+
 }
 
 #define EXTRASLICECOVER 1

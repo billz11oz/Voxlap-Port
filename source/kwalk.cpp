@@ -103,15 +103,9 @@ static inline void ftol (float f, long *a)
 
 static inline void fcossin (float a, float *c, float *s)
 {
-	_asm
-	{
-		fld a
-		fsincos
-		mov eax, c
-		fstp dword ptr [eax]
-		mov eax, s
-		fstp dword ptr [eax]
-	}
+	float angle = a;
+	*c = cos(angle);
+	*s = sin(angle);
 }
 
 static inline long scale (long a, long d, long c)

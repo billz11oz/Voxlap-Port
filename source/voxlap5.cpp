@@ -231,68 +231,16 @@ long zbufoff;
 
 static inline void fcossin (float a, float *c, float *s)
 {
-	#ifdef __NOASM__
-	*c = cos(a);
-	*s = sin(a);
-	#else
-	#if __GNUC__ //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	DWORD PTR a\n\t"
-		"fsincos\n\t"
-		"mov	eax, c\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		"mov	eax, s\n\t"
-		"fstp	DWORD PTR [eax]\n\t"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if _MSC_VER //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld a
-		fsincos
-		mov	eax, c
-		fstp	dword ptr [eax]
-		mov	eax, s
-		fstp	dword ptr [eax]
-	}
-	#endif
-	#endif
+	float angle = a;
+	*c = cos(angle);
+	*s = sin(angle);
 }
 
 static inline void dcossin (double a, double *c, double *s)
 {
-	#ifdef __NOASM__
-	*c = cos(a);
-	*s = sin(a);
-	#else
-	#if defined(__GNUC__) && !defined(__NOASM__) //AT&T SYNTAX ASSEMBLY
-	__asm__ __volatile__
-	(
-		".intel_syntax noprefix\n"
-		"fld	qword ptr a\n"
-		"fsincos\n"
-		"mov	eax, c\n"
-		"fstp	qword ptr [eax]\n"
-		"mov	eax, s\n"
-		"fstp	qword ptr [eax]\n"
-		".att_syntax prefix\n"
-	);
-	#endif
-	#if defined(_MSC_VER) && !defined(__NOASM__) //MASM SYNTAX ASSEMBLY
-	_asm
-	{
-		fld	a
-		fsincos
-		mov	eax, c
-		fstp	qword ptr [eax]
-		mov	eax, s
-		fstp	qword ptr [eax]
-	}
-	#endif
-	#endif
+	double angle = a;
+	*c = cos(angle);
+	*s = sin(angle);
 }
 
 static inline void ftol (float f, long *a)

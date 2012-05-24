@@ -223,15 +223,9 @@ static inline void ftol (float f, long *a)
 
 static inline void dcossin (double a, double *c, double *s)
 {
-	_asm
-	{
-		fld a
-		fsincos
-		mov eax, c
-		fstp qword ptr [eax]
-		mov eax, s
-		fstp qword ptr [eax]
-	}
+	double angle = a;
+	*c = cos(angle);
+	*s = sin(angle);
 }
 
 static inline void clearbuf (void *d, long c, long a)
